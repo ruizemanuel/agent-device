@@ -66,12 +66,13 @@ extension RunnerTests {
   @MainActor
   func testInAppBackOnAnUnreadableTreeVerifiesTheSwipeOnTheSoleScreen() throws {
     let status = try launchBackFixture(["--agent-device-back-regression"])
+    // Terminates whichever fixture instance is running when the test leaves, on every path.
+    defer { endBackFixture() }
     let answered = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
     let soleScreenOpen = soleScreenRouteIsOpen(for: app)
     let answeredLabel = status.label
     endBackFixture()
     _ = try launchBackFixture([])
-    defer { endBackFixture() }
     let ignored = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
 
     guard soleScreenOpen else {

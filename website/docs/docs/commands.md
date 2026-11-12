@@ -124,7 +124,10 @@ iOS Simulator launch behavior:
 Back, orientation, and hardware buttons:
 
 - `back` uses app-owned back navigation: the back keyevent on Android, the visible back control on macOS, and the Siri Remote Menu button on tvOS. `--in-app` names this default explicitly.
-- On iOS, `back` is the left-edge back swipe, with or without `--in-app` or `--system`. It succeeds only when the app's screen changes. An unchanged screen refuses with `reason: back_swipe_no_change`. It waits up to about a second for the screen to stop changing before it swipes. If the screen keeps changing on its own, or cannot be sampled after the swipe, the result is an unknown outcome (`back_swipe_unverified`). If the screen cannot be sampled before the swipe, `back` does not swipe.
+- On iOS, `back` is the left-edge back swipe, with or without `--in-app` or `--system`. It succeeds only when the app's screen changes. It waits up to about a second for the screen to stop changing before it swipes.
+- `reason: back_swipe_no_change`: the swipe was sent and the screen did not change. Press the visible back or close control.
+- `reason: back_swipe_unverified`: the swipe may or may not have navigated, because the screen kept changing before the swipe or could not be sampled after it. Check with `snapshot`.
+- If the screen cannot be sampled before the swipe, `back` does not swipe.
 - An app with a left-edge drawer may open the drawer instead of going back. When a back or close control is visible, press it by its ref.
 - `back --system` sends system back input: the Android back keyevent, the iOS back swipe, or the tvOS Siri Remote Menu button. macOS has no system back, so it refuses before dispatch.
 - `orientation portrait|portrait-upside-down|landscape-left|landscape-right` works on iOS and Android mobile targets only. On ADB-backed Android it turns auto-rotate off, and the lock persists after the session ends until something turns it back on. A foldable iPhone simulator (iPhone Duo) refuses `portrait-upside-down`, and refuses every rotation in a scoped simulator set (`--ios-simulator-device-set`).

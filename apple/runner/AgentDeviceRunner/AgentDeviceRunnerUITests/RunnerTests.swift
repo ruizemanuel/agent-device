@@ -40,8 +40,9 @@ final class RunnerTests: XCTestCase {
   /// discloses dispatched: no.
   /// `ALERT_UNRESOLVED` means required alert acquisition failed or exhausted its deadline.
   /// It establishes no absence and activates nothing, so dispatched: no.
-  /// `BACK_SWIPE_NO_CHANGE` is a back swipe that left the app's screen unchanged, and
-  /// `BACK_SWIPE_UNVERIFIED` one whose screen could not be sampled afterwards. Both ran the swipe.
+  /// `BACK_SWIPE_NO_CHANGE` is a back swipe that left the app's screen unchanged.
+  /// `BACK_SWIPE_UNVERIFIED` is one whose screen kept changing on its own before the swipe, or could
+  /// not be sampled afterwards. Both ran the swipe.
   enum RunnerWireErrorCode {
     static let mainThreadTimeout = "MAIN_THREAD_TIMEOUT"
     static let appNotRunning = "APP_NOT_RUNNING"
