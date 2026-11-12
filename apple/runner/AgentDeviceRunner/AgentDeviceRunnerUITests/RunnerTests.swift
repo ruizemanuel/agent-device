@@ -44,6 +44,8 @@ final class RunnerTests: XCTestCase {
   /// `BACK_SWIPE_UNVERIFIED` is one whose screen kept changing on its own before the swipe, or could
   /// not be sampled afterwards. Both ran the swipe. `BACK_SWIPE_NOT_DISPATCHED` is a back swipe that
   /// was refused before any touch went down, so dispatched: no.
+  /// `BACK_UNSUPPORTED_PLATFORM` is a back on a platform with no back gesture (visionOS); nothing ran,
+  /// so dispatched: no.
   enum RunnerWireErrorCode {
     static let mainThreadTimeout = "MAIN_THREAD_TIMEOUT"
     static let appNotRunning = "APP_NOT_RUNNING"
@@ -54,6 +56,7 @@ final class RunnerTests: XCTestCase {
     static let backSwipeNoChange = "BACK_SWIPE_NO_CHANGE"
     static let backSwipeUnverified = "BACK_SWIPE_UNVERIFIED"
     static let backSwipeNotDispatched = "BACK_SWIPE_NOT_DISPATCHED"
+    static let backUnsupportedPlatform = "BACK_UNSUPPORTED_PLATFORM"
     /// Refuses a repeat of a `commandId` the runner already finished, when that command's own
     /// classification keeps no response body to replay. Nothing ran for the repeat, but the daemon's
     /// dispatch disclosure stays `unknown` — only the runner knows whether an earlier send of that id

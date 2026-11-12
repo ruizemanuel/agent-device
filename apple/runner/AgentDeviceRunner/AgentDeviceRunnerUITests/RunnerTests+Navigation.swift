@@ -131,7 +131,7 @@ extension RunnerTests {
     // visionOS has no edge swipe that pops a navigation stack; the host refuses before dispatch.
     return .refused(
       ErrorPayload(
-        code: "UNSUPPORTED_OPERATION",
+        code: RunnerWireErrorCode.backUnsupportedPlatform,
         message: "visionOS has no back gesture",
         hint: "iOS back is a left-edge swipe; visionOS has none. Press the visible back control by its ref."
       )

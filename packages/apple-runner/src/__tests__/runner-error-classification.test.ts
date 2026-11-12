@@ -153,6 +153,11 @@ test('a back swipe that proved nothing stays COMMAND_FAILED, unknown, with its o
   assert.equal(notDispatched.code, 'COMMAND_FAILED');
   assert.equal(notDispatched.details.reason, 'back_swipe_not_dispatched');
   assert.equal(notDispatched.details.dispatched, 'no');
+  // visionOS has no back gesture: the runner refuses before anything runs.
+  const unsupported = classifyRunnerReportedError('BACK_UNSUPPORTED_PLATFORM');
+  assert.equal(unsupported.code, 'COMMAND_FAILED');
+  assert.equal(unsupported.details.runnerErrorCode, 'BACK_UNSUPPORTED_PLATFORM');
+  assert.equal(unsupported.details.dispatched, 'no');
 });
 
 test('retryable requires an AppError with COMMAND_FAILED', () => {

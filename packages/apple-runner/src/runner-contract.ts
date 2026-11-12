@@ -336,11 +336,13 @@ export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAI
  * The runner codes for an iOS `back` swipe. NO_CHANGE: the swipe was sent and the screen did not
  * change. UNVERIFIED: the swipe was sent but the screen kept changing before it or could not be
  * sampled after it. Both ran the swipe, so they stay `unknown`. NOT_DISPATCHED: the swipe was
- * refused before any touch went down.
+ * refused before any touch went down. UNSUPPORTED_PLATFORM: the platform has no back gesture
+ * (visionOS), so nothing ran.
  */
 const BACK_SWIPE_NO_CHANGE_RUNNER_CODE = 'BACK_SWIPE_NO_CHANGE';
 const BACK_SWIPE_UNVERIFIED_RUNNER_CODE = 'BACK_SWIPE_UNVERIFIED';
 const BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE = 'BACK_SWIPE_NOT_DISPATCHED';
+const BACK_UNSUPPORTED_PLATFORM_RUNNER_CODE = 'BACK_UNSUPPORTED_PLATFORM';
 
 /**
  * Runner codes that classify a failure for the host without renaming it on the wire. They stay
@@ -358,6 +360,7 @@ const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlyMap<string, { retriable?: true
   [BACK_SWIPE_NO_CHANGE_RUNNER_CODE, {}],
   [BACK_SWIPE_UNVERIFIED_RUNNER_CODE, {}],
   [BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE, {}],
+  [BACK_UNSUPPORTED_PLATFORM_RUNNER_CODE, {}],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, {}] as const),
 ]);
 
@@ -399,6 +402,7 @@ const RUNNER_ERROR_CODE_DISPATCH: ReadonlyMap<string, DispatchDisclosure> = new 
   [ALERT_BUTTON_NOT_FOUND_RUNNER_CODE, 'no'],
   [ALERT_UNRESOLVED_RUNNER_CODE, 'no'],
   [BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE, 'no'],
+  [BACK_UNSUPPORTED_PLATFORM_RUNNER_CODE, 'no'],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, 'no'] as const),
 ]);
 
