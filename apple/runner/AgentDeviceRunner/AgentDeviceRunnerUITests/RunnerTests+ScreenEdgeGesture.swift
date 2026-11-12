@@ -13,33 +13,46 @@ extension RunnerTests {
     app: XCUIApplication,
     plan: RunnerGesturePlan
   ) throws -> RunnerInteractionOutcome {
+    switch try dispatchScreenEdgeTouch(app: app, plan: plan) {
+    case .sent:
+      return .performed
+    case .notSent(let message, let hint), .interrupted(let message, let hint):
+      return .unsupported(message: message, hint: hint)
+    }
+  }
+
+  /// The edge touch and whether it reached the device: every refusal before touch-down is `.notSent`.
+  @MainActor
+  private func dispatchScreenEdgeTouch(app: XCUIApplication, plan: RunnerGesturePlan) throws -> TouchDispatch {
     // The coordinate context books a foldable's lit-panel window and keeps its typed refusal.
     let planned: NativePlannedGesture
     switch try nativePlannedGesture(app: app, plan: plan, gesture: "edge swipe") {
     case .resolved(let resolved): planned = resolved
-    case .refused(let outcome): return outcome
+    case .refused(let outcome): return TouchDispatch(notSent: outcome)
     }
     guard let portraitSize = edgeTouchDisplayPortraitSize(), let samples = planned.pointerSamples.first else {
-      return Self.unmeasuredSoleDisplayOutcome(gesture: "edge swipe")
+      return TouchDispatch(notSent: Self.unmeasuredSoleDisplayOutcome(gesture: "edge swipe"))
     }
+    var touchDown: ObjCBool = false
     if let message = RunnerSimulatorEdgeTouch.dispatch(
       withApplication: app,
       resolvedWindow: planned.context.resolvedWindow,
       samples: samples,
-      screenSize: portraitSize
+      screenSize: portraitSize,
+      touchDown: &touchDown
     ) {
-      return .unsupported(
-        message: message,
-        hint: "Retry after the app is foregrounded on a simulator display with a touchscreen."
-      )
+      let hint = "Retry after the app is foregrounded on a simulator display with a touchscreen."
+      return touchDown.boolValue
+        ? .interrupted(message: message, hint: hint)
+        : .notSent(message: message, hint: hint)
     }
-    return .performed
+    return .sent
   }
 
   /// The left-edge back swipe as the `right-edge` gesture preset plans it: from 8 pt inside the
   /// leading edge to 85% of the width at mid-height, in 100 ms.
   @MainActor
-  func screenEdgeBackSwipe(app: XCUIApplication, surface: CGRect) throws -> RunnerInteractionOutcome {
+  func screenEdgeBackSwipe(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
     let y = Double(surface.midY)
     let samples = [
       RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(surface.minX + 8), y: y)),
@@ -48,7 +61,7 @@ extension RunnerTests {
         point: RunnerGesturePoint(x: Double(surface.minX + surface.width * 0.85), y: y)
       ),
     ]
-    return try screenEdgePlannedGesture(app: app, plan: RunnerGesturePlan(
+    return try dispatchScreenEdgeTouch(app: app, plan: RunnerGesturePlan(
       topology: "single",
       intent: "fling",
       executionProfile: "endpoint-hold",

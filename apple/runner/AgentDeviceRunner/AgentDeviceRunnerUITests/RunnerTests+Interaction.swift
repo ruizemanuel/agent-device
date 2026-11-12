@@ -91,19 +91,35 @@ extension RunnerTests {
   }
 
 #if os(iOS)
-  /// The left-edge back swipe across `surface`. A simulator sends it as one edge-masked touch,
-  /// because UIKit's interactive pop ignores an XCTest drag that lacks the mask; a device has no
-  /// such touch and takes the XCTest drag.
+  /// Whether a touch reached the device. `.notSent` refused before any touch-down; `.interrupted`
+  /// began a contact that did not complete.
+  enum TouchDispatch {
+    case sent
+    case notSent(message: String, hint: String?)
+    case interrupted(message: String, hint: String?)
+
+    init(notSent refusal: RunnerInteractionOutcome) {
+      switch refusal {
+      case .unsupported(let message, let hint): self = .notSent(message: message, hint: hint)
+      case .performed: self = .sent
+      }
+    }
+  }
+
+  /// The left-edge back swipe across `surface`, from 8 pt inside the leading edge. A simulator
+  /// sends it as one edge-masked touch, because UIKit's interactive pop ignores an XCTest drag that
+  /// lacks the mask; a device has no such touch and takes the XCTest drag from the same origin.
   @MainActor
-  func performBackGesture(app: XCUIApplication, surface: CGRect) throws -> RunnerInteractionOutcome {
+  func performBackGesture(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
 #if targetEnvironment(simulator)
     return try screenEdgeBackSwipe(app: app, surface: surface)
 #else
     let target = try normalizedOffsetAnchor(app: app)
-    let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5))
-    let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+    let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+      .withOffset(CGVector(dx: 8, dy: 0))
+    let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
     start.press(forDuration: 0.05, thenDragTo: end)
-    return .performed
+    return .sent
 #endif
   }
 #endif

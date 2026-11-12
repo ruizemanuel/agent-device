@@ -547,6 +547,8 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
 
 - (void)navigationBackSwiped:(UIScreenEdgePanGestureRecognizer *)recognizer {
   if (recognizer.state == UIGestureRecognizerStateEnded) {
+    // A back navigation redraws most of the screen, so the fixture repaints all of it too.
+    self.view.backgroundColor = UIColor.systemTealColor;
     self.navigationBackStatus.text = @"Back performed";
   }
 }
@@ -581,11 +583,22 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
         [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(navigationBackSwiped:)];
     edgePan.edges = UIRectEdgeLeft;
     [self.view addGestureRecognizer:edgePan];
-    // `--animating` keeps the screen changing on its own, as a spinner or a launch still rendering.
+    // `--animating` keeps the whole screen changing on its own, as a launch that is still rendering:
+    // 16 bands take independent random shades, so no two samples of the screen match.
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--animating"]) {
-      __block NSUInteger tick = 0;
-      self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
-        label.text = [NSString stringWithFormat:@"tick %lu", (unsigned long)++tick];
+      NSMutableArray<UIView *> *bands = [NSMutableArray array];
+      CGRect bounds = self.view.bounds;
+      for (NSUInteger index = 0; index < 16; index++) {
+        UIView *band = [[UIView alloc] initWithFrame:CGRectMake(
+            0, bounds.size.height * index / 16, bounds.size.width, bounds.size.height / 16)];
+        band.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [self.view insertSubview:band atIndex:0];
+        [bands addObject:band];
+      }
+      self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *timer) {
+        for (UIView *band in bands) {
+          band.backgroundColor = [UIColor colorWithWhite:arc4random_uniform(256) / 255.0 alpha:1];
+        }
       }];
     }
   }

@@ -333,11 +333,14 @@ export const NO_TEXT_INPUT_AT_POINT_RUNNER_CODE = 'NO_TEXT_INPUT_AT_POINT';
 export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAILABLE';
 
 /**
- * The runner codes for an iOS `back` swipe that ran without proving a navigation: the app's screen
- * stayed the same, or could not be sampled afterwards. The swipe was sent, so both stay `unknown`.
+ * The runner codes for an iOS `back` swipe. NO_CHANGE: the swipe was sent and the screen did not
+ * change. UNVERIFIED: the swipe was sent but the screen kept changing before it or could not be
+ * sampled after it. Both ran the swipe, so they stay `unknown`. NOT_DISPATCHED: the swipe was
+ * refused before any touch went down.
  */
 const BACK_SWIPE_NO_CHANGE_RUNNER_CODE = 'BACK_SWIPE_NO_CHANGE';
 const BACK_SWIPE_UNVERIFIED_RUNNER_CODE = 'BACK_SWIPE_UNVERIFIED';
+const BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE = 'BACK_SWIPE_NOT_DISPATCHED';
 
 /**
  * Runner codes that classify a failure for the host without renaming it on the wire. They stay
@@ -354,6 +357,7 @@ const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlyMap<string, { retriable?: true
   [SCROLL_KEYBOARD_OCCLUDES_SURFACE_RUNNER_CODE, {}],
   [BACK_SWIPE_NO_CHANGE_RUNNER_CODE, {}],
   [BACK_SWIPE_UNVERIFIED_RUNNER_CODE, {}],
+  [BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE, {}],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, {}] as const),
 ]);
 
@@ -369,6 +373,7 @@ const RUNNER_REPORTED_ERROR_REASONS: ReadonlyMap<string, RunnerReportedErrorReas
   [TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE, 'text_input_probe_unavailable'],
   [BACK_SWIPE_NO_CHANGE_RUNNER_CODE, 'back_swipe_no_change'],
   [BACK_SWIPE_UNVERIFIED_RUNNER_CODE, 'back_swipe_unverified'],
+  [BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE, 'back_swipe_not_dispatched'],
 ]);
 
 /**
@@ -393,6 +398,7 @@ const RUNNER_ERROR_CODE_DISPATCH: ReadonlyMap<string, DispatchDisclosure> = new 
   [TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE, 'no'],
   [ALERT_BUTTON_NOT_FOUND_RUNNER_CODE, 'no'],
   [ALERT_UNRESOLVED_RUNNER_CODE, 'no'],
+  [BACK_SWIPE_NOT_DISPATCHED_RUNNER_CODE, 'no'],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, 'no'] as const),
 ]);
 
@@ -406,7 +412,8 @@ type RunnerReportedErrorReason =
   | 'no_text_input_at_point'
   | 'text_input_probe_unavailable'
   | 'back_swipe_no_change'
-  | 'back_swipe_unverified';
+  | 'back_swipe_unverified'
+  | 'back_swipe_not_dispatched';
 
 /** Wire code plus the details every path must publish for one runner-reported error code. */
 export type RunnerReportedErrorClass = Readonly<{

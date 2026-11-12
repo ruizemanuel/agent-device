@@ -57,11 +57,10 @@ extension RunnerTests {
     case .success(let settled): before = settled
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
-    if case .unsupported(let message, let hint) = try performBackGesture(
-      app: app,
-      surface: context.geometry.windowOnScreen.rect
+    if let refusal = Self.backGestureRefusal(
+      try performBackGesture(app: app, surface: context.geometry.windowOnScreen.rect)
     ) {
-      return .unconfirmed(ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint))
+      return refusal
     }
     guard before.settled else {
       return .unconfirmed(
@@ -80,6 +79,20 @@ extension RunnerTests {
     return Self.backSwipeOutcome(observation: observation)
 #endif
   }
+
+#if os(iOS)
+  /// A swipe refused before touch-down reached nothing; one cut short after it may have navigated.
+  static func backGestureRefusal(_ dispatch: TouchDispatch) -> InAppBackOutcome? {
+    switch dispatch {
+    case .sent:
+      return nil
+    case .notSent(let message, let hint):
+      return .refused(ErrorPayload(code: RunnerWireErrorCode.backSwipeNotDispatched, message: message, hint: hint))
+    case .interrupted(let message, let hint):
+      return .unconfirmed(ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint))
+    }
+  }
+#endif
 
   /// No screen to compare means no proof either way, so the swipe is not sent.
   static func backScreenRefusal(_ refusal: RunnerAppScreenCaptureFailure) -> ErrorPayload {
@@ -105,7 +118,7 @@ extension RunnerTests {
     for _ in 0..<Self.backSwipeSettleSamples {
       sleepFor(Self.backSwipeVerificationDelay)
       switch captureBackVisualState(app: app, context: context) {
-      case .success(let next) where next == previous: return .success((next, true))
+      case .success(let next) where !Self.visualSamplesDiffer(next, previous): return .success((next, true))
       case .success(let next): previous = next
       case .failure(let refusal): return .failure(refusal)
       }
@@ -113,8 +126,8 @@ extension RunnerTests {
     return .success((previous, false))
   }
 
-  /// The frame the swipe compares, encoded when the display answered and the typed refusal
-  /// otherwise. It samples the app's own screen only: a system-surface capture reads as "unchanged"
+  /// The frame the swipe compares, as a coarse grayscale grid when the display answered and the
+  /// typed refusal otherwise. It samples the app's own screen only: a system-surface capture reads as "unchanged"
   /// across a before/after pair and launders a wrong-process frame into a false refusal.
   private func captureBackVisualState(
     app: XCUIApplication,
@@ -126,7 +139,7 @@ extension RunnerTests {
       from: context.resolvedWindow == nil && requestLitPanel == nil
         ? captureSoleAppScreen(app: app)
         : captureResolvedAppScreen(app: app, litPanel: requestLitPanel),
-      encoding: { runnerPngData(for: $0.image) }
+      encoding: { runnerCGImage(from: $0.image).flatMap(Self.visualGrid) }
     )
 #else
     return .failure(.unresolvedScreen)
@@ -144,6 +157,37 @@ extension RunnerTests {
       guard let png = encoding(screen) else { return .failure(.unrenderableImage) }
       return .success(png)
     }
+  }
+
+  static let visualGridSize = (width: 48, height: 96)
+  static let visualCellTolerance = 24
+  static let visualChangedCellFraction = 0.01
+
+  /// The screen drawn into a small grayscale grid. A back navigation redraws most of it, while a
+  /// spinner, a clock tick, or a material shimmer moves few cells or moves them by little.
+  static func visualGrid(of image: CGImage) -> Data? {
+    let (width, height) = visualGridSize
+    var cells = [UInt8](repeating: 0, count: width * height)
+    let drawn = cells.withUnsafeMutableBytes { buffer -> Bool in
+      guard let context = CGContext(
+        data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+        bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+        bitmapInfo: CGImageAlphaInfo.none.rawValue
+      ) else { return false }
+      context.interpolationQuality = .medium
+      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+      return true
+    }
+    return drawn ? Data(cells) : nil
+  }
+
+  /// Two grids differ when more than 1% of their cells moved by more than the tolerance.
+  static func visualSamplesDiffer(_ lhs: Data, _ rhs: Data) -> Bool {
+    guard lhs.count == rhs.count else { return true }
+    let moved = zip(lhs, rhs).reduce(0) { count, pair in
+      abs(Int(pair.0) - Int(pair.1)) > visualCellTolerance ? count + 1 : count
+    }
+    return Double(moved) > Double(lhs.count) * visualChangedCellFraction
   }
 
   /// What an observation of the swipe's before/after samples concludes. Kept apart from the sleep
@@ -181,7 +225,7 @@ extension RunnerTests {
   ) -> NavigationVisualObservation {
     switch (before, after) {
     case (.success(let before), .success(let after)):
-      return before != after ? .changed : .unchanged
+      return visualSamplesDiffer(before, after) ? .changed : .unchanged
     // The refusal most recently hit names the unknown. An uncomparable pair always carries one.
     case (_, .failure(let refusal)):
       return .unobserved(refusal: refusal)

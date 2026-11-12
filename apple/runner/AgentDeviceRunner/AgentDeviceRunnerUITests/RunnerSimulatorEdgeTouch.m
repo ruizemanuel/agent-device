@@ -74,7 +74,9 @@ static NSString * _Nullable RunnerResolveTouchscreenSender(
 + (NSString * _Nullable)dispatchWithApplication:(id)application
                                  resolvedWindow:(id _Nullable)resolvedWindow
                                         samples:(NSArray<NSDictionary<NSString *, NSNumber *> *> *)samples
-                                     screenSize:(CGSize)screenSize {
+                                     screenSize:(CGSize)screenSize
+                                      touchDown:(BOOL *)touchDown {
+  *touchDown = NO;
   if (samples.count < 2 || screenSize.width <= 0 || screenSize.height <= 0) {
     return @"an edge touch needs at least two samples and a measured screen";
   }
@@ -96,7 +98,7 @@ static NSString * _Nullable RunnerResolveTouchscreenSender(
     return failure;
   }
 
-  failure = RunnerDispatchEdgeContact(&functions, client, sender, samples, screenSize);
+  failure = RunnerDispatchEdgeContact(&functions, client, sender, samples, screenSize, touchDown);
   CFRelease(client);
   return failure;
 }

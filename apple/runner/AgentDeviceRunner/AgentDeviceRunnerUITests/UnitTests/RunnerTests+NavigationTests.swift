@@ -91,6 +91,21 @@ extension RunnerTests {
     XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeNoChange)
   }
 
+  /// Only a swipe refused before touch-down is the not-dispatched refusal; one cut short after its
+  /// touch-down may have navigated and stays an unknown outcome.
+  func testBackGestureRefusalSeparatesNotSentFromInterrupted() {
+    XCTAssertNil(Self.backGestureRefusal(.sent))
+    guard case .refused(let notSent) = Self.backGestureRefusal(.notSent(message: "no touchscreen", hint: nil)) else {
+      return XCTFail("a swipe that never touched down must refuse as not dispatched")
+    }
+    XCTAssertEqual(notSent.code, RunnerWireErrorCode.backSwipeNotDispatched)
+    guard case .unconfirmed(let interrupted) = Self.backGestureRefusal(.interrupted(message: "lift failed", hint: nil))
+    else {
+      return XCTFail("a swipe cut short after touch-down must not claim nothing was dispatched")
+    }
+    XCTAssertEqual(interrupted.code, "UNSUPPORTED_OPERATION")
+  }
+
   /// Fails when the fixture reports a back within a short window, so a gesture the app handles
   /// after the call returned still fails the test.
   @MainActor
@@ -173,9 +188,9 @@ extension RunnerTests {
     typealias Sample = Result<Data, RunnerAppScreenCaptureFailure>
     let refused: Sample = .failure(.unresolvedScreen)
     let windowless: Sample = .failure(.unresolvedWindow)
-    let captured: Sample = .success(Data([1, 2, 3]))
-    let changed: Sample = .success(Data([1, 2, 4]))
-    let other: Sample = .success(Data([1]))
+    let captured: Sample = .success(Data(repeating: 0, count: 100))
+    let changed: Sample = .success(Data(repeating: 255, count: 100))
+    let other: Sample = .success(Data(repeating: 0, count: 100))
 
     XCTAssertEqual(Self.navigationVisualObservation(before: captured, after: changed), .changed, "changed")
     XCTAssertEqual(Self.navigationVisualObservation(before: captured, after: captured), .unchanged, "unchanged")
@@ -194,6 +209,22 @@ extension RunnerTests {
       .unobserved(refusal: .unresolvedWindow),
       "both refused: the later refusal wins"
     )
+  }
+
+  /// A back navigation redraws most of the screen; a spinner, a clock tick, or a low-contrast
+  /// shimmer must not read as one, or as a screen that never settles.
+  func testVisualSamplesDifferOnlyForNavigationSizedChange() {
+    let base = Data(repeating: 100, count: 1000)
+    var spinner = base
+    for index in 0..<5 { spinner[index] = 255 }
+    let shimmer = Data(repeating: 120, count: 1000)
+    var pushed = base
+    for index in 0..<300 { pushed[index] = 255 }
+
+    XCTAssertFalse(Self.visualSamplesDiffer(base, spinner), "0.5% of cells is not navigation")
+    XCTAssertFalse(Self.visualSamplesDiffer(base, shimmer), "every cell moving by 20 stays inside the tolerance")
+    XCTAssertTrue(Self.visualSamplesDiffer(base, pushed), "30% of cells redrawn is navigation")
+    XCTAssertTrue(Self.visualSamplesDiffer(base, Data(repeating: 100, count: 999)), "a different grid size is uncomparable")
   }
 
   func testBackSwipeOutcomeNamesNoChangeAndAnUnsampledScreenApart() {

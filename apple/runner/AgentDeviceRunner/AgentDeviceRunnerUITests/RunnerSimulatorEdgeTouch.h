@@ -15,11 +15,13 @@ NS_ASSUME_NONNULL_BEGIN
 // or the sole screen when it is nil, as for XCTest synthesis. `samples` is the ordered
 // { x, y, offsetMs } path of one contact in portrait screen points, and `screenSize` is that
 // screen's portrait size in points. The call returns after the contact lifts.
-// Returns nil on success, or the reason the touch could not be dispatched.
+// Returns nil on success, or the reason the touch could not be dispatched. `touchDown` is YES once
+// the contact went down, so a failure with it NO reached nothing.
 + (NSString * _Nullable)dispatchWithApplication:(id)application
                                  resolvedWindow:(id _Nullable)resolvedWindow
                                         samples:(NSArray<NSDictionary<NSString *, NSNumber *> *> *)samples
-                                     screenSize:(CGSize)screenSize;
+                                     screenSize:(CGSize)screenSize
+                                      touchDown:(BOOL *)touchDown;
 
 @end
 

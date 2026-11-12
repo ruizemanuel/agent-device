@@ -148,6 +148,11 @@ test('a back swipe that proved nothing stays COMMAND_FAILED, unknown, with its o
   assert.equal(unverified.code, 'COMMAND_FAILED');
   assert.equal(unverified.details.reason, 'back_swipe_unverified');
   assert.equal(unverified.details.dispatched, 'unknown');
+  // A swipe refused before touch-down reached nothing, so it is the one back refusal that is `no`.
+  const notDispatched = classifyRunnerReportedError('BACK_SWIPE_NOT_DISPATCHED');
+  assert.equal(notDispatched.code, 'COMMAND_FAILED');
+  assert.equal(notDispatched.details.reason, 'back_swipe_not_dispatched');
+  assert.equal(notDispatched.details.dispatched, 'no');
 });
 
 test('retryable requires an AppError with COMMAND_FAILED', () => {
