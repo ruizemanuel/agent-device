@@ -144,9 +144,11 @@ verifies a change of the app's screen. Its failure codes are:
 | `BACK_SWIPE_NO_CHANGE` | The swipe was sent and the sampled grid (48×96 grayscale cells below the status bar) changed in at most 1% of its cells by more than 24 of 256 levels. | The swipe |
 | `BACK_SWIPE_UNVERIFIED` | The swipe may have run; the outcome is unknown. | Possibly the swipe |
 
-The settle window is three agreeing samples taken 0.25 s apart, plus one more sample right before the
-swipe that must still match them; only a change from that last sample to the sample after the swipe
-counts. A screen that animates on its own more slowly than the settle window can still be misread as
+The settle window is a run of samples taken 0.25 s apart that agree for at least 0.5 s on a simulator
+(0.9 s on a device), plus one more sample right before the swipe that must still match them. Only a
+change from that last sample to the sample after the swipe counts, and only when the time between
+those two does not exceed the time the screen had been still; otherwise the result is
+`BACK_SWIPE_UNVERIFIED`. A screen that animates on its own more slowly than the settle window can still be misread as
 a back navigation; any finite window has that limit.
 
 The `backSystem` command was removed (#4460). This protocol carries no version: the daemon and the runner are built from the same
@@ -187,14 +189,6 @@ Successful and failed responses use the same top-level envelope:
 ```
 
 `data` is command-specific. Common fields include snapshot nodes, text lookup results, gesture timing, visibility metadata, and screenshot or recording output details.
-
-An error may carry `"dispatched": "no"` when the runner provably sent nothing, such as a synthesized
-gesture that failed before its events reached XCTest. The daemon reads it as `details.dispatched: no`.
-It is carried only on a delivered reply; a reply lost and recovered through the `status` journal is
-reported as unknown.
-Without it, the code alone decides; a synthesized gesture that failed after its events reached
-XCTest answers `UNSUPPORTED_OPERATION` without the field, an unknown outcome, and is never retried
-through an XCTest fallback.
 
 Capture-plan snapshots carry `snapshotViewport`, the acquisition's declared viewport evidence.
 Its shape is `{kind: "reported" | "derived", rect: {x, y, width, height}}` or

@@ -26,8 +26,6 @@ extension RunnerTests {
       return refusal.response
     } catch let refusal as RunnerCoordinateRefusal {
       return unsupportedResponse(message: refusal.message, hint: refusal.hint)
-    } catch let unknown as RunnerGestureOutcomeUnknown {
-      return unsupportedResponse(message: unknown.message, hint: unknown.hint)
     }
   }
 
@@ -255,8 +253,7 @@ extension RunnerTests {
       case .xctestFallback(let message, let hint):
         fallback = GestureFallback(strategy: "xctest-coordinate-long-press", message: message, hint: hint)
       case .refused(_, let message, let hint):
-        // A long press that may have run throws `RunnerGestureOutcomeUnknown`; this one sent nothing.
-        return unsupportedResponse(message: message, hint: hint, dispatched: "no")
+        return unsupportedResponse(message: message, hint: hint)
       }
 #else
       fallback = nil

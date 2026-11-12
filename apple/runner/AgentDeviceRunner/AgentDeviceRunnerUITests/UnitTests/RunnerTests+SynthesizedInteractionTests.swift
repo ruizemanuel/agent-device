@@ -52,22 +52,6 @@ private final class RunnerWindowlessQueryStub: NSObject {
   }
 }
 
-/// Fails every synthesized gesture, after or before handing its events to XCTest.
-private final class RunnerSynthesisFailureStub: NSObject {
-  static var dispatchedBeforeFailing = true
-  @objc(synthesizeGestureWithApplication:resolvedWindow:interfaceOrientation:pointerSamples:dispatched:)
-  class func synthesizeGesture(
-    _ app: AnyObject,
-    resolvedWindow: AnyObject?,
-    interfaceOrientation: Int,
-    pointerSamples: [[[String: NSNumber]]],
-    dispatched: UnsafeMutablePointer<ObjCBool>
-  ) -> String? {
-    dispatched.pointee = ObjCBool(dispatchedBeforeFailing)
-    return "stubbed synthesis failure"
-  }
-}
-
 /// Counts XCTest coordinate taps without performing them.
 final class RunnerCoordinateTapCounter: NSObject {
   static var taps = 0
@@ -279,67 +263,6 @@ extension RunnerTests {
     }
     XCTAssertEqual(RunnerCoordinatePressCounter.presses, 0)
     XCTAssertEqual(RunnerCoordinatePressCounter.drags, 0, "the XCTest press-and-drag never ran")
-  }
-
-  /// A long press whose synthesis failed after its events reached XCTest may have run: it answers
-  /// `UNSUPPORTED_OPERATION` with an unknown dispatch, and no XCTest fallback presses a second time.
-  @MainActor
-  func testLongPressSynthesisFailingAfterDispatchIsUnknownAndNeverFallsBack() throws {
-    let (response, presses) = try longPressWithFailingSynthesis(dispatchedBeforeFailing: true, health: .healthy)
-
-    XCTAssertEqual(response.error?.code, "UNSUPPORTED_OPERATION")
-    XCTAssertNil(response.error?.dispatched, "the gesture may have run")
-    XCTAssertEqual(presses, 0, "no XCTest fallback repeats a gesture that may have run")
-  }
-
-  /// One that failed before its events reached XCTest sent nothing, and says so.
-  @MainActor
-  func testLongPressSynthesisFailingBeforeDispatchIsNotDispatched() throws {
-    let (response, presses) = try longPressWithFailingSynthesis(dispatchedBeforeFailing: false, health: .unavailable)
-
-    XCTAssertEqual(response.error?.code, "UNSUPPORTED_OPERATION")
-    XCTAssertEqual(response.error?.dispatched, "no")
-    XCTAssertEqual(presses, 0)
-  }
-
-  @MainActor
-  private func longPressWithFailingSynthesis(
-    dispatchedBeforeFailing: Bool,
-    health: RunnerAccessibilityHealth
-  ) throws -> (Response, presses: Int) {
-    app.launch()
-    mainOwned.app = app
-    mainOwned.accessibilityHealth = health
-    defer {
-      invalidateCachedTarget(reason: "unit_test_cleanup")
-      app.terminate()
-    }
-    RunnerSynthesisFailureStub.dispatchedBeforeFailing = dispatchedBeforeFailing
-    let swaps: [(Method, Method)] = [
-      (try XCTUnwrap(class_getClassMethod(
-        RunnerSynthesizedGesture.self,
-        NSSelectorFromString("synthesizeGestureWithApplication:resolvedWindow:interfaceOrientation:pointerSamples:dispatched:")
-      )), try XCTUnwrap(class_getClassMethod(
-        RunnerSynthesisFailureStub.self,
-        #selector(RunnerSynthesisFailureStub.synthesizeGesture(_:resolvedWindow:interfaceOrientation:pointerSamples:dispatched:))
-      ))),
-      (try XCTUnwrap(class_getInstanceMethod(XCUICoordinate.self, #selector(XCUICoordinate.press(forDuration:)))),
-       try XCTUnwrap(class_getInstanceMethod(
-         RunnerCoordinatePressCounter.self,
-         #selector(RunnerCoordinatePressCounter.press(forDuration:))
-       ))),
-    ]
-    let originals = swaps.map { target, stub in (target, method_setImplementation(target, method_getImplementation(stub))) }
-    defer { for (method, original) in originals.reversed() { method_setImplementation(method, original) } }
-    RunnerCoordinatePressCounter.presses = 0
-
-    let response = try executeOnMainPrepared(
-      command: try runnerCommandFixture(
-        #"{"command":"longPress","commandId":"failing-synthesis-long-press","x":40,"y":200,"durationMs":300}"#
-      ),
-      activeApp: app
-    )
-    return (response, RunnerCoordinatePressCounter.presses)
   }
 
   /// A synthesis that fails before its record is handed to XCTest touched nothing; one that fails

@@ -12,14 +12,6 @@ struct RunnerCoordinateRefusal: Error {
   let hint: String?
 }
 
-/// A synthesized gesture that failed after its events reached XCTest, so it may have run. Thrown
-/// rather than returned so that no XCTest fallback repeats it; answered as `UNSUPPORTED_OPERATION`
-/// with an unknown dispatch.
-struct RunnerGestureOutcomeUnknown: Error {
-  let message: String
-  let hint: String?
-}
-
 private struct RunnerUnsupportedOperationError: LocalizedError {
   let message: String
 

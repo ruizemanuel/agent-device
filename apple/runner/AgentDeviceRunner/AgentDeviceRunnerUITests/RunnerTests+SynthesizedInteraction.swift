@@ -178,19 +178,19 @@ extension RunnerTests {
         "offsetMs": NSNumber(value: offsetMs),
       ]
     }
-    var dispatched: ObjCBool = false
-    let failure = RunnerSynthesizedGesture.synthesizeGesture(
+    if let message = RunnerSynthesizedGesture.synthesizeGesture(
       withApplication: app,
       resolvedWindow: resolvedWindow,
       interfaceOrientation: orientation,
       pointerSamples: [samples],
-      dispatched: &dispatched
-    )
-    return try Self.synthesizedGestureOutcome(
-      failure: failure,
-      dispatched: dispatched.boolValue,
-      refusalHint: "Private XCTest event synthesis is required for an AX-free long press on iOS; update Xcode if this persists."
-    )
+      dispatched: nil
+    ) {
+      return .unsupported(
+        message: message,
+        hint: "Private XCTest event synthesis is required for an AX-free long press on iOS; update Xcode if this persists."
+      )
+    }
+    return .performed
   }
 #endif
 
@@ -817,22 +817,6 @@ extension RunnerTests {
   }
 #endif
 
-  /// A synthesized gesture's result. A failure before its events reached XCTest sent nothing, so it
-  /// is an `.unsupported` refusal, which a policy may answer with an XCTest fallback. A failure after
-  /// may have run, so it throws `RunnerGestureOutcomeUnknown`, which nothing repeats.
-  static func synthesizedGestureOutcome(
-    failure: String?,
-    dispatched: Bool,
-    refusalHint: String
-  ) throws -> RunnerInteractionOutcome {
-    guard let failure else { return .performed }
-    guard dispatched else { return .unsupported(message: failure, hint: refusalHint) }
-    throw RunnerGestureOutcomeUnknown(
-      message: failure,
-      hint: "Check the screen with snapshot before you retry; the gesture may already have run."
-    )
-  }
-
   @MainActor
   func sampledPlannedGesture(
     app: XCUIApplication,
@@ -844,19 +828,19 @@ extension RunnerTests {
     case .resolved(let resolved): planned = resolved
     case .refused(let outcome): return outcome
     }
-    var dispatched: ObjCBool = false
-    let failure = RunnerSynthesizedGesture.synthesizeGesture(
+    if let message = RunnerSynthesizedGesture.synthesizeGesture(
       withApplication: app,
       resolvedWindow: planned.context.resolvedWindow,
       interfaceOrientation: planned.orientation,
       pointerSamples: planned.pointerSamples,
-      dispatched: &dispatched
-    )
-    return try Self.synthesizedGestureOutcome(
-      failure: failure,
-      dispatched: dispatched.boolValue,
-      refusalHint: "This gesture uses private XCTest event-synthesis APIs; rebuild the runner with a supported Xcode if this persists."
-    )
+      dispatched: nil
+    ) {
+      return .unsupported(
+        message: message,
+        hint: "This gesture uses private XCTest event-synthesis APIs; rebuild the runner with a supported Xcode if this persists."
+      )
+    }
+    return .performed
 #elseif os(tvOS)
     return .unsupported(
       message: "multi-touch gestures are not supported on tvOS",

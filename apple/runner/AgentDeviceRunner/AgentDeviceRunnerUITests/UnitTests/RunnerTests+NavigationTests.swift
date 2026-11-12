@@ -271,6 +271,14 @@ extension RunnerTests {
     }
   }
 
+  /// A swipe whose gap outran the time the screen had been still cannot tell its effect from a
+  /// self-repaint slower than the window.
+  func testBackSwipeGapIsCoveredOnlyByAsLongAStillWindow() {
+    XCTAssertTrue(Self.backSwipeGapIsCovered(stableSinceMs: 0, justBeforeMs: 600, afterMs: 1100))
+    XCTAssertTrue(Self.backSwipeGapIsCovered(stableSinceMs: 0, justBeforeMs: 600, afterMs: 1200))
+    XCTAssertFalse(Self.backSwipeGapIsCovered(stableSinceMs: 0, justBeforeMs: 600, afterMs: 1300))
+  }
+
   /// A screen that moved between settling and the swipe has no baseline to credit a change against.
   func testBackSwipeBaselineHoldsOnlyWhenSettledAndUnmovedBeforeTheSwipe() {
     let baseline = Data(repeating: 100, count: 1000)

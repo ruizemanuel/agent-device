@@ -7,7 +7,6 @@ import {
   NO_TEXT_INPUT_AT_POINT_RUNNER_CODE,
   RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES,
   TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE,
-  buildRunnerResponseError,
   classifyRunnerReportedError,
 } from '../runner-contract.ts';
 import {
@@ -154,22 +153,6 @@ test('a back swipe that proved nothing stays COMMAND_FAILED, unknown, with its o
   assert.equal(notDispatched.code, 'COMMAND_FAILED');
   assert.equal(notDispatched.details.reason, 'back_swipe_not_dispatched');
   assert.equal(notDispatched.details.dispatched, 'no');
-});
-
-// A synthesized gesture that failed before its events reached XCTest says so; the same code without
-// the statement stays unknown, because the gesture may have run.
-test('a runner reply that states dispatched no is not dispatched; without it the code decides', () => {
-  const refused = buildRunnerResponseError({
-    ok: false,
-    error: { code: 'UNSUPPORTED_OPERATION', message: 'synthesis failed', dispatched: 'no' },
-  });
-  assert.equal(refused.code, 'UNSUPPORTED_OPERATION');
-  assert.equal(refused.details?.dispatched, 'no');
-  const unknown = buildRunnerResponseError({
-    ok: false,
-    error: { code: 'UNSUPPORTED_OPERATION', message: 'synthesis failed' },
-  });
-  assert.equal(unknown.details?.dispatched, 'unknown');
 });
 
 test('retryable requires an AppError with COMMAND_FAILED', () => {

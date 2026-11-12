@@ -123,8 +123,8 @@ static id RunnerTapPointerPath(
                                           resolvedWindow:(id _Nullable)resolvedWindow
                                     interfaceOrientation:(NSInteger)interfaceOrientation
                                           pointerSamples:(NSArray<NSArray<NSDictionary<NSString *, NSNumber *> *> *> *)pointerSamples
-                                              dispatched:(BOOL *)dispatched {
-  *dispatched = NO;
+                                              dispatched:(BOOL * _Nullable)dispatched {
+  if (dispatched != NULL) *dispatched = NO;
   @try {
     RunnerGestureEventBridge bridge;
     id record = nil;
@@ -170,7 +170,7 @@ static id RunnerTapPointerPath(
       ((RunnerMsgSendAddPath)objc_msgSend)(record, bridge.core.addPathSelector, path);
     }
 
-    *dispatched = YES;
+    if (dispatched != NULL) *dispatched = YES;
     return RunnerSynthesizeEventRecord(&bridge, record);
   } @catch (NSException *exception) {
     return RunnerFormatXCTestException(exception, @"private XCTest event synthesis failed");

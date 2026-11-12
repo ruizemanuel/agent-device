@@ -142,12 +142,12 @@ private final class LitPanelBookingProbe: NSObject {
   @objc(synthesizeGestureWithApplication:resolvedWindow:interfaceOrientation:pointerSamples:dispatched:)
   class func synthesizeGesture(_ app: AnyObject, resolvedWindow: AnyObject?, interfaceOrientation: Int,
                                pointerSamples: [[[String: NSNumber]]],
-                               dispatched: UnsafeMutablePointer<ObjCBool>) -> String? {
-    dispatched.pointee = false
+                               dispatched: UnsafeMutablePointer<ObjCBool>?) -> String? {
+    dispatched?.pointee = false
     guard let first = pointerSamples.first?.first, let last = pointerSamples.first?.last else {
       return "fixture pointer path is empty"
     }
-    dispatched.pointee = true
+    dispatched?.pointee = true
     record(window: resolvedWindow, orientation: interfaceOrientation,
            start: CGPoint(x: first["x"]!.doubleValue, y: first["y"]!.doubleValue),
            end: CGPoint(x: last["x"]!.doubleValue, y: last["y"]!.doubleValue))

@@ -29,10 +29,10 @@ extension RunnerTests {
     }
   }
 
-  func unsupportedResponse(message: String, hint: String?, dispatched: String? = nil) -> Response {
+  func unsupportedResponse(message: String, hint: String?) -> Response {
     Response(
       ok: false,
-      error: ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint, dispatched: dispatched)
+      error: ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint)
     )
   }
 
@@ -164,10 +164,8 @@ extension RunnerTests {
     timing: (gestureStartUptimeMs: Double, gestureEndUptimeMs: Double),
     outcome: RunnerInteractionOutcome
   ) -> Response {
-    // A planned gesture that may have run throws `RunnerGestureOutcomeUnknown`, so a refusal here
-    // sent nothing.
-    if case .unsupported(let message, let hint) = outcome {
-      return unsupportedResponse(message: message, hint: hint, dispatched: "no")
+    if let response = unsupportedResponse(for: outcome) {
+      return response
     }
     return gestureResponse(message: plan.intent, timing: timing)
   }

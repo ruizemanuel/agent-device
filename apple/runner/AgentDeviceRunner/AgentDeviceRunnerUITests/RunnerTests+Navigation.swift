@@ -3,11 +3,17 @@ import XCTest
 
 extension RunnerTests {
   static let backSwipeVerificationDelay: TimeInterval = 0.25
-  /// Three agreeing samples span two verification delays, at least the gap from the last before
-  /// sample to the after sample, so a screen that changes on its own more slowly than one delay
-  /// cannot pass for settled and then read as the swipe's effect.
-  static let backSwipeStableSamples = 3
-  static let backSwipeSettleSampleBudget = 6
+  /// How long the screen must agree with itself before the swipe. It is sized to the usual gap from
+  /// the sample taken just before the swipe to the one after it (the gesture, one verification delay,
+  /// and a capture); a device's XCTest drag takes longer than the simulator's 100 ms edge touch. The
+  /// window narrows the self-repaint risk without closing it, so `backSwipeGapIsCovered` refuses to
+  /// credit a swipe whose actual gap outran the time the screen had been still.
+#if targetEnvironment(simulator)
+  static let backSwipeStableWindowMs = 500.0
+#else
+  static let backSwipeStableWindowMs = 900.0
+#endif
+  static let backSwipeSettleSampleBudget = 8
 
   /// What one `back` concluded. `.refused` dispatched nothing. `.unconfirmed` ran the back gesture,
   /// or may have, without proof that it navigated back.
@@ -85,7 +91,7 @@ extension RunnerTests {
         )
       )
     }
-    let before: (sample: Data, settled: Bool)
+    let before: (sample: Data, stableSinceMs: Double, settled: Bool)
     switch settledBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
     case .success(let settled): before = settled
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
@@ -96,6 +102,7 @@ extension RunnerTests {
     case .success(let sample): justBefore = sample
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
+    let justBeforeMs = currentUptimeMs()
     let stillSettled = Self.backSwipeBaselineHolds(
       settled: before.settled,
       baseline: before.sample,
@@ -113,10 +120,20 @@ extension RunnerTests {
       )
     }
     sleepFor(Self.backSwipeVerificationDelay)
-    let observation = Self.navigationVisualObservation(
-      before: .success(justBefore),
-      after: captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight)
-    )
+    let after = captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight)
+    guard Self.backSwipeGapIsCovered(
+      stableSinceMs: before.stableSinceMs,
+      justBeforeMs: justBeforeMs,
+      afterMs: currentUptimeMs()
+    ) else {
+      return .unconfirmed(
+        Self.backSwipeUnverified(
+          because: "the swipe took longer than the screen had been still before it",
+          hint: "Take a snapshot to see where the app is."
+        )
+      )
+    }
+    let observation = Self.navigationVisualObservation(before: .success(justBefore), after: after)
     NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)
     return Self.backSwipeOutcome(observation: observation)
 #else
@@ -159,29 +176,32 @@ extension RunnerTests {
     )
   }
 
-  /// Samples a verification delay apart until `backSwipeStableSamples` in a row agree with the
-  /// first of them. `settled` is false when the budget ran out first.
+  /// Samples a verification delay apart until every sample of a run has agreed with its first one
+  /// for `backSwipeStableWindowMs`. `stableSinceMs` is when that run began; `settled` is false when the
+  /// budget ran out first.
   private func settledBackVisualState(
     app: XCUIApplication,
     context: SynthesizedCoordinateContext,
     statusBarHeight: CGFloat
-  ) -> Result<(sample: Data, settled: Bool), RunnerAppScreenCaptureFailure> {
-    var stableRun: [Data] = []
+  ) -> Result<(sample: Data, stableSinceMs: Double, settled: Bool), RunnerAppScreenCaptureFailure> {
+    var runStart: (sample: Data, ms: Double)?
+    var last = Data()
     for index in 0..<Self.backSwipeSettleSampleBudget {
       if index > 0 { sleepFor(Self.backSwipeVerificationDelay) }
       switch captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
       case .failure(let refusal):
         return .failure(refusal)
       case .success(let sample):
-        if let first = stableRun.first, Self.visualSamplesDiffer(first, sample) {
-          stableRun = [sample]
-        } else {
-          stableRun.append(sample)
+        let now = currentUptimeMs()
+        last = sample
+        guard let start = runStart, !Self.visualSamplesDiffer(start.sample, sample) else {
+          runStart = (sample, now)
+          continue
         }
-        if stableRun.count >= Self.backSwipeStableSamples { return .success((sample, true)) }
+        if now - start.ms >= Self.backSwipeStableWindowMs { return .success((sample, start.ms, true)) }
       }
     }
-    return .success((stableRun[stableRun.count - 1], false))
+    return .success((last, runStart?.ms ?? currentUptimeMs(), false))
   }
 
   /// The frame the swipe compares, below the status bar, as a coarse grayscale grid when the display
@@ -274,6 +294,14 @@ extension RunnerTests {
       abs(Int(pair.0) - Int(pair.1)) > visualCellTolerance ? count + 1 : count
     }
     return Double(moved) > Double(lhs.count) * visualChangedCellFraction
+  }
+
+  /// Whether the screen had been still for at least as long as the swipe's gap: the time from the
+  /// sample taken just before the swipe to the one after it must not exceed the time the screen had
+  /// already agreed with itself, or a self-repainting screen slower than the window could read as the
+  /// swipe's effect.
+  static func backSwipeGapIsCovered(stableSinceMs: Double, justBeforeMs: Double, afterMs: Double) -> Bool {
+    afterMs - justBeforeMs <= justBeforeMs - stableSinceMs
   }
 
   /// Whether the swipe's effect can be measured: the screen settled, and the sample taken right
