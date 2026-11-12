@@ -16,8 +16,13 @@ extension RunnerTests {
     switch try dispatchScreenEdgeTouch(app: app, plan: plan) {
     case .sent:
       return .performed
-    case .notSent(let message, let hint), .interrupted(let message, let hint):
+    case .notSent(let message, let hint):
       return .unsupported(message: message, hint: hint)
+    case .interrupted(let message, _):
+      throw RunnerGestureOutcomeUnknown(
+        message: message,
+        hint: "Check the screen with snapshot before you retry; the edge swipe may already have run."
+      )
     }
   }
 

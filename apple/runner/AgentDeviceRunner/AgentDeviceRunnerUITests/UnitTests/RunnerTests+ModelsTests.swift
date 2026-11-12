@@ -8,6 +8,7 @@ extension RunnerTests {
       code: "CODE",
       message: "message",
       hint: "hint",
+      dispatched: "no",
       retryableFailure: .targetAppUnavailable
     )
     let encoded = try JSONEncoder().encode(payload)

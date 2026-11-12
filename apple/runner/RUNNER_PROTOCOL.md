@@ -188,6 +188,12 @@ Successful and failed responses use the same top-level envelope:
 
 `data` is command-specific. Common fields include snapshot nodes, text lookup results, gesture timing, visibility metadata, and screenshot or recording output details.
 
+An error may carry `"dispatched": "no"` when the runner provably sent nothing, such as a synthesized
+gesture that failed before its events reached XCTest. The daemon reads it as `details.dispatched: no`.
+Without it, the code alone decides; a synthesized gesture that failed after its events reached
+XCTest answers `UNSUPPORTED_OPERATION` without the field, an unknown outcome, and is never retried
+through an XCTest fallback.
+
 Capture-plan snapshots carry `snapshotViewport`, the acquisition's declared viewport evidence.
 Its shape is `{kind: "reported" | "derived", rect: {x, y, width, height}}` or
 `{kind: "missing", reason: "not-provided" | "invalid"}`.

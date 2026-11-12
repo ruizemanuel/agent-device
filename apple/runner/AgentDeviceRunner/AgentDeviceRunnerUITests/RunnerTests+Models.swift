@@ -678,6 +678,8 @@ struct ErrorPayload: Codable {
   var code: String?
   let message: String
   var hint: String?
+  /// `no` when the runner provably sent nothing for this command; absent when it may have.
+  var dispatched: String? = nil
   /// Runner-internal: read by `shouldRetryResponse` and never encoded, so the host's decoding of
   /// the error is unchanged.
   var retryableFailure: RetryableResponseFailure? = nil
@@ -686,6 +688,7 @@ struct ErrorPayload: Codable {
     case code
     case message
     case hint
+    case dispatched
   }
 
   static func targetAppUnavailable(bundleId: String?) -> ErrorPayload {

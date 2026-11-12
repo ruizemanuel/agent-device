@@ -457,7 +457,7 @@ export function classifyRunnerReportedError(
 
 export type RunnerResponsePayload = {
   ok?: unknown;
-  error?: { code?: unknown; message?: unknown; hint?: unknown };
+  error?: { code?: unknown; message?: unknown; hint?: unknown; dispatched?: unknown };
   data?: unknown;
 };
 
@@ -511,6 +511,8 @@ export function buildRunnerResponseError(
   return new AppError(classification.code, errorMessage ?? 'Runner error', {
     runner: payload,
     ...classification.details,
+    // The runner states `no` only when it provably sent nothing; it never upgrades a refusal.
+    ...(payload.error?.dispatched === 'no' ? { dispatched: 'no' as const } : {}),
     xcodebuild: {
       exitCode: 1,
       stdout: '',
