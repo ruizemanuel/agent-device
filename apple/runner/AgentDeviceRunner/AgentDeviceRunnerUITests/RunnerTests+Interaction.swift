@@ -98,6 +98,16 @@ extension RunnerTests {
     case notSent(message: String, hint: String?)
     case interrupted(message: String, hint: String?)
 
+    /// A synthesized gesture's result: no failure is `.sent`; a failure before the record was handed
+    /// to XCTest touched nothing; one after it may have run.
+    init(synthesisFailure failure: String?, dispatched: Bool) {
+      guard let failure else {
+        self = .sent
+        return
+      }
+      self = dispatched ? .interrupted(message: failure, hint: nil) : .notSent(message: failure, hint: nil)
+    }
+
     /// A refusal raised before any touch: only `.unsupported` is one.
     init(notSent refusal: RunnerInteractionOutcome) {
       guard case .unsupported(let message, let hint) = refusal else {
@@ -174,16 +184,15 @@ extension RunnerTests {
     case .resolved(let resolved): planned = resolved
     case .refused(let outcome): return TouchDispatch(notSent: outcome)
     }
-    if let message = RunnerSynthesizedGesture.synthesizeGesture(
+    var dispatched: ObjCBool = false
+    let failure = RunnerSynthesizedGesture.synthesizeGesture(
       withApplication: app,
       resolvedWindow: planned.context.resolvedWindow,
       interfaceOrientation: planned.orientation,
-      pointerSamples: planned.pointerSamples
-    ) {
-      // The synthesis may fail after its touch went down, so its outcome is not known.
-      return .interrupted(message: message, hint: nil)
-    }
-    return .sent
+      pointerSamples: planned.pointerSamples,
+      dispatched: &dispatched
+    )
+    return TouchDispatch(synthesisFailure: failure, dispatched: dispatched.boolValue)
   }
 #endif
 

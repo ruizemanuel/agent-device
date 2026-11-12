@@ -96,7 +96,11 @@ extension RunnerTests {
     case .success(let sample): justBefore = sample
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
-    let stillSettled = before.settled && !Self.visualSamplesDiffer(before.sample, justBefore)
+    let stillSettled = Self.backSwipeBaselineHolds(
+      settled: before.settled,
+      baseline: before.sample,
+      justBefore: justBefore
+    )
     if let refusal = Self.backGestureRefusal(try performBackGesture(app: app, context: context)) {
       return refusal
     }
@@ -270,6 +274,12 @@ extension RunnerTests {
       abs(Int(pair.0) - Int(pair.1)) > visualCellTolerance ? count + 1 : count
     }
     return Double(moved) > Double(lhs.count) * visualChangedCellFraction
+  }
+
+  /// Whether the swipe's effect can be measured: the screen settled, and the sample taken right
+  /// before the swipe still matches the settled baseline.
+  static func backSwipeBaselineHolds(settled: Bool, baseline: Data, justBefore: Data) -> Bool {
+    settled && !visualSamplesDiffer(baseline, justBefore)
   }
 
   /// What an observation of the swipe's before/after samples concludes. Kept apart from the sleep

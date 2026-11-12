@@ -178,11 +178,13 @@ extension RunnerTests {
         "offsetMs": NSNumber(value: offsetMs),
       ]
     }
+    var dispatched: ObjCBool = false
     if let message = RunnerSynthesizedGesture.synthesizeGesture(
       withApplication: app,
       resolvedWindow: resolvedWindow,
       interfaceOrientation: orientation,
-      pointerSamples: [samples]
+      pointerSamples: [samples],
+      dispatched: &dispatched
     ) {
       return .unsupported(
         message: message,
@@ -827,11 +829,13 @@ extension RunnerTests {
     case .resolved(let resolved): planned = resolved
     case .refused(let outcome): return outcome
     }
+    var dispatched: ObjCBool = false
     if let message = RunnerSynthesizedGesture.synthesizeGesture(
       withApplication: app,
       resolvedWindow: planned.context.resolvedWindow,
       interfaceOrientation: planned.orientation,
-      pointerSamples: planned.pointerSamples
+      pointerSamples: planned.pointerSamples,
+      dispatched: &dispatched
     ) {
       return .unsupported(
         message: message,

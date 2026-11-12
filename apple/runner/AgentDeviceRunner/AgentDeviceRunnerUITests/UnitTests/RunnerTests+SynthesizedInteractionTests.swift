@@ -25,12 +25,17 @@ private final class RunnerUnserializableTreeStub: NSObject {
   }
 }
 
-/// Counts XCTest coordinate presses without performing them.
+/// Counts XCTest coordinate presses and press-and-drags without performing them.
 private final class RunnerCoordinatePressCounter: NSObject {
   static var presses = 0
+  static var drags = 0
   @objc(pressForDuration:)
   func press(forDuration duration: TimeInterval) {
     Self.presses += 1
+  }
+  @objc(pressForDuration:thenDragToCoordinate:)
+  func press(forDuration duration: TimeInterval, thenDragTo coordinate: XCUICoordinate) {
+    Self.drags += 1
   }
 }
 
@@ -207,6 +212,11 @@ extension RunnerTests {
     swaps += [
       (class_getInstanceMethod(XCUICoordinate.self, #selector(XCUICoordinate.press(forDuration:))),
        class_getInstanceMethod(RunnerCoordinatePressCounter.self, #selector(RunnerCoordinatePressCounter.press(forDuration:)))),
+      (class_getInstanceMethod(XCUICoordinate.self, #selector(XCUICoordinate.press(forDuration:thenDragTo:))),
+       class_getInstanceMethod(
+         RunnerCoordinatePressCounter.self,
+         #selector(RunnerCoordinatePressCounter.press(forDuration:thenDragTo:))
+       )),
       (class_getInstanceMethod(XCUICoordinate.self, #selector(XCUICoordinate.tap)),
        class_getInstanceMethod(RunnerCoordinateTapCounter.self, #selector(RunnerCoordinateTapCounter.tap))),
     ]
@@ -215,6 +225,7 @@ extension RunnerTests {
       (target, method_setImplementation(target, method_getImplementation(stub)))
     }
     RunnerCoordinatePressCounter.presses = 0
+    RunnerCoordinatePressCounter.drags = 0
     RunnerCoordinateTapCounter.taps = 0
     RunnerUnserializableTreeStub.frameReads = 0
     RunnerUnserializableTreeStub.recordingTest = self
@@ -237,10 +248,13 @@ extension RunnerTests {
       invalidateCachedTarget(reason: "unit_test_cleanup")
       app.terminate()
     }
-    guard let context = try synthesizedCoordinateContext(app: app) else {
-      return XCTAssertFalse(soleScreenRouteIsOpen(for: app), "an open sole-screen route books a context")
+    let context = try XCTUnwrap(
+      try synthesizedCoordinateContext(app: app),
+      "the sole-screen route books a context on an unserializable tree"
+    )
+    guard context.treeUnreadable else {
+      return XCTFail("the drag would take the XCTest coordinate path on a readable tree")
     }
-    XCTAssertTrue(context.treeUnreadable)
 
     let dispatch = try deviceBackDrag(app: app, context: context)
 
@@ -248,6 +262,40 @@ extension RunnerTests {
       return XCTFail("the drag must be synthesized on the booked route: \(dispatch)")
     }
     XCTAssertEqual(RunnerCoordinatePressCounter.presses, 0)
+    XCTAssertEqual(RunnerCoordinatePressCounter.drags, 0, "the XCTest press-and-drag never ran")
+  }
+
+  /// A synthesis that fails before its record is handed to XCTest touched nothing; one that fails
+  /// after may have run.
+  func testSynthesisFailureMapsByWhetherTheRecordWasDispatched() {
+    guard case .sent = TouchDispatch(synthesisFailure: nil, dispatched: true) else {
+      return XCTFail("no failure is a sent gesture")
+    }
+    guard case .notSent = TouchDispatch(synthesisFailure: "no pointer path", dispatched: false) else {
+      return XCTFail("a failure before dispatch touched nothing")
+    }
+    guard case .interrupted = TouchDispatch(synthesisFailure: "synthesis failed", dispatched: true) else {
+      return XCTFail("a failure after dispatch may have run")
+    }
+  }
+
+  /// The real synthesis reports nothing dispatched when it fails while building the record.
+  @MainActor
+  func testSynthesizedGestureWithAnEmptyPointerPathDispatchesNothing() throws {
+    app.launch()
+    defer { app.terminate() }
+    var dispatched: ObjCBool = true
+
+    let failure = RunnerSynthesizedGesture.synthesizeGesture(
+      withApplication: app,
+      resolvedWindow: nil,
+      interfaceOrientation: 1,
+      pointerSamples: [[]],
+      dispatched: &dispatched
+    )
+
+    XCTAssertNotNil(failure)
+    XCTAssertFalse(dispatched.boolValue)
   }
 
   /// On a tree XCTest cannot serialize, XCTest's coordinate press reads an infinite app frame and

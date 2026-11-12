@@ -271,6 +271,16 @@ extension RunnerTests {
     }
   }
 
+  /// A screen that moved between settling and the swipe has no baseline to credit a change against.
+  func testBackSwipeBaselineHoldsOnlyWhenSettledAndUnmovedBeforeTheSwipe() {
+    let baseline = Data(repeating: 100, count: 1000)
+    let moved = Data(repeating: 255, count: 1000)
+
+    XCTAssertTrue(Self.backSwipeBaselineHolds(settled: true, baseline: baseline, justBefore: baseline))
+    XCTAssertFalse(Self.backSwipeBaselineHolds(settled: true, baseline: baseline, justBefore: moved))
+    XCTAssertFalse(Self.backSwipeBaselineHolds(settled: false, baseline: baseline, justBefore: baseline))
+  }
+
   func testBackSwipeOutcomeNamesNoChangeAndAnUnsampledScreenApart() {
     switch Self.backSwipeOutcome(observation: .unchanged) {
     case .unconfirmed(let payload):
