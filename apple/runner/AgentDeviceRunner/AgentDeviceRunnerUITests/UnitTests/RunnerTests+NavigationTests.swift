@@ -74,25 +74,41 @@ extension RunnerTests {
     assertBackNeverPerformed(status)
   }
 
-  /// The samples leave out the target app's status bar, read from the app's own tree. A tree XCTest
-  /// cannot read gives no status bar, so no sample can be compared and back refuses before it sends
-  /// anything, rather than guessing an inset and calling the result verified.
+  /// No status-bar frame can be read at all: the app's tree is unreadable and every frame, the
+  /// SpringBoard status bar's included, reads empty. No sample can be compared, so back refuses before
+  /// it sends anything, rather than guessing an inset and calling the result verified.
   @MainActor
   func testInAppBackOnAnUnreadableTreeRefusesBeforeTheSwipe() throws {
     let status = try launchBackFixture(["--agent-device-back-regression"])
     defer { endBackFixture() }
+    XCTAssertTrue(soleScreenRouteIsOpen(for: app), "the status-bar read is reached only through an open route")
 
     let outcome = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
 
     guard case .refused(let payload) = outcome else {
-      return XCTFail("without the app's status bar back must refuse before the swipe")
+      return XCTFail("without any status-bar frame back must refuse before the swipe")
     }
-    XCTAssertTrue(
-      payload.code == RunnerWireErrorCode.backSwipeNotDispatched
-        || payload.code == RunnerAppScreenCaptureFailure.unresolvedWindow.rawValue,
-      "nothing was sent: \(payload.code ?? "nil")"
-    )
+    XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeNotDispatched)
+    XCTAssertTrue(payload.message.contains("status bar"), payload.message)
     assertBackNeverPerformed(status)
+  }
+
+  /// The route witness: after the app's tree rejects the windows query, back reaches the screen
+  /// through whichever route opens (the sole screen where the app proves it fills it), reads the
+  /// status bar from SpringBoard, swipes, and verifies the change there.
+  @MainActor
+  func testInAppBackAfterARejectedQuerySwipesAndVerifiesOnTheRouteThatOpens() throws {
+    let status = try launchBackFixture(["--agent-device-back-regression"])
+    defer { endBackFixture() }
+
+    let outcome = try withRejectedAppTree(framesReadable: true, rejections: 1) {
+      try performInAppBack(app: app)
+    }
+
+    guard case .performed = outcome else {
+      return XCTFail("back must swipe and verify through the route that opens after a rejected query")
+    }
+    XCTAssertEqual(status.label, "Back performed")
   }
 
   /// Only a swipe refused before touch-down is the not-dispatched refusal; one cut short after its

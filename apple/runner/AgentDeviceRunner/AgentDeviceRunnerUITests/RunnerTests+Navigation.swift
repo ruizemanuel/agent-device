@@ -220,8 +220,9 @@ extension RunnerTests {
 #if os(iOS)
   /// The bottom of the status bar over the target app, in screen points, measured rather than read
   /// from the runner process: the app's own status bar element when its tree exposes one, else the
-  /// SpringBoard status bar drawn over it. Nil when neither can be read; the app's tree is not queried
-  /// when XCTest cannot serialize it. Without it no sample can be compared, so back refuses.
+  /// SpringBoard status bar drawn over it. An unreadable app tree is not queried and goes straight to
+  /// SpringBoard. Nil only when no status-bar frame can be read at all; then no sample can be
+  /// compared, so back refuses.
   private func backStatusBarHeight(app: XCUIApplication, context: SynthesizedCoordinateContext) -> CGFloat? {
     let sources = context.treeUnreadable ? [springboard] : [app, springboard]
     for source in sources {

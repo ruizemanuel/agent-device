@@ -128,7 +128,7 @@ Back, orientation, and hardware buttons:
 - `reason: back_swipe_no_change`: the swipe was sent and the screen did not change. Press the visible back or close control.
 - `reason: back_swipe_unverified`: the swipe may or may not have navigated, because the screen kept changing before the swipe or could not be sampled after it. Check with `snapshot`.
 - `reason: back_swipe_not_dispatched`: the swipe was refused before any touch went down, so nothing reached the device.
-- If the app's status bar or screen cannot be read before the swipe, `back` does not swipe: it refuses with `back_swipe_not_dispatched` or a screen-capture reason, and nothing is sent.
+- If the app's status bar or screen cannot be read before the swipe, `back` does not swipe: it refuses with `back_swipe_not_dispatched`, or with `COMMAND_FAILED` and `details.runnerErrorCode` set to `APP_SCREEN_WINDOW_UNRESOLVED`, `APP_SCREEN_UNRESOLVED`, `APP_SCREEN_CAPTURE_UNRENDERABLE`, or `APP_SCREEN_OFF_LIT_PANEL` when the screen cannot be captured. Nothing is sent.
 - A simulator sends the swipe as a screen-edge touch. A physical device has no such touch and drags from the leading edge instead; if that drag does not pop the screen, `back` refuses with `back_swipe_no_change`. visionOS has no back swipe and refuses with `back_swipe_not_dispatched`.
 - An app with a left-edge drawer may open the drawer instead of going back. When a back or close control is visible, press it by its ref.
 - `back --system` sends system back input: the Android back keyevent, the iOS back swipe, or the tvOS Siri Remote Menu button. macOS has no system back, so it refuses before dispatch.
