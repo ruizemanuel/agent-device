@@ -118,6 +118,34 @@ extension RunnerTests {
 #endif
   }
 
+  /// A one-pointer fling from `start` to `end` across `surface`, shaped as the host planner shapes
+  /// one; `contactOrigin` asks for a screen-edge touch.
+  static func backFlingPlan(
+    from start: CGPoint,
+    to end: CGPoint,
+    durationMs: Double,
+    across surface: CGRect,
+    contactOrigin: String?
+  ) -> RunnerGesturePlan {
+    RunnerGesturePlan(
+      topology: "single",
+      intent: "fling",
+      executionProfile: "endpoint-hold",
+      contactOrigin: contactOrigin,
+      durationMs: durationMs,
+      viewport: RunnerGestureViewport(
+        x: Double(surface.minX), y: Double(surface.minY),
+        width: Double(surface.width), height: Double(surface.height)
+      ),
+      pointers: [
+        RunnerGesturePointer(pointerId: 0, samples: [
+          RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(start.x), y: Double(start.y))),
+          RunnerGestureSample(offsetMs: durationMs, point: RunnerGesturePoint(x: Double(end.x), y: Double(end.y))),
+        ]),
+      ]
+    )
+  }
+
   /// The back drag a device takes, from 2 pt inside the leading edge to 0.8 of the width at
   /// mid-height. Driven on a simulator, that XCTest drag popped Settings > General and a React Native
   /// header-less screen 9 times in 10 each, where one starting 20 pt in popped 2 in 6. XCTest cannot
@@ -134,24 +162,12 @@ extension RunnerTests {
       return .sent
     }
     let surface = context.geometry.windowOnScreen.rect
-    let samples = [
-      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(surface.minX + 2), y: Double(surface.midY))),
-      RunnerGestureSample(
-        offsetMs: 300,
-        point: RunnerGesturePoint(x: Double(surface.minX + surface.width * 0.8), y: Double(surface.midY))
-      ),
-    ]
-    let plan = RunnerGesturePlan(
-      topology: "single",
-      intent: "fling",
-      executionProfile: "endpoint-hold",
-      contactOrigin: nil,
+    let plan = Self.backFlingPlan(
+      from: CGPoint(x: surface.minX + 2, y: surface.midY),
+      to: CGPoint(x: surface.minX + surface.width * 0.8, y: surface.midY),
       durationMs: 300,
-      viewport: RunnerGestureViewport(
-        x: Double(surface.minX), y: Double(surface.minY),
-        width: Double(surface.width), height: Double(surface.height)
-      ),
-      pointers: [RunnerGesturePointer(pointerId: 0, samples: samples)]
+      across: surface,
+      contactOrigin: nil
     )
     let planned: NativePlannedGesture
     switch try nativePlannedGesture(app: app, plan: plan, gesture: "back drag") {

@@ -53,26 +53,12 @@ extension RunnerTests {
   @MainActor
   func screenEdgeBackSwipe(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
     let (start, end) = Self.backSwipeEndpoints(in: surface)
-    let samples = [
-      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(start.x), y: Double(start.y))),
-      RunnerGestureSample(
-        offsetMs: Self.backSwipeDurationMs,
-        point: RunnerGesturePoint(x: Double(end.x), y: Double(end.y))
-      ),
-    ]
-    return try dispatchScreenEdgeTouch(app: app, plan: RunnerGesturePlan(
-      topology: "single",
-      intent: "fling",
-      executionProfile: "endpoint-hold",
-      contactOrigin: runnerScreenEdgeContactOrigin,
+    return try dispatchScreenEdgeTouch(app: app, plan: Self.backFlingPlan(
+      from: start,
+      to: end,
       durationMs: Self.backSwipeDurationMs,
-      viewport: RunnerGestureViewport(
-        x: Double(surface.minX),
-        y: Double(surface.minY),
-        width: Double(surface.width),
-        height: Double(surface.height)
-      ),
-      pointers: [RunnerGesturePointer(pointerId: 0, samples: samples)]
+      across: surface,
+      contactOrigin: runnerScreenEdgeContactOrigin
     ))
   }
 
