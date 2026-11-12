@@ -90,12 +90,17 @@ extension RunnerTests {
     case .success(let settled): before = settled
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
-    if let refusal = Self.backGestureRefusal(
-      try performBackGesture(app: app, surface: context.geometry.windowOnScreen.rect)
-    ) {
+    // One more sample right before the swipe: the change credited to the swipe is measured from it.
+    let justBefore: Data
+    switch captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
+    case .success(let sample): justBefore = sample
+    case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
+    }
+    let stillSettled = before.settled && !Self.visualSamplesDiffer(before.sample, justBefore)
+    if let refusal = Self.backGestureRefusal(try performBackGesture(app: app, context: context)) {
       return refusal
     }
-    guard before.settled else {
+    guard stillSettled else {
       return .unconfirmed(
         Self.backSwipeUnverified(
           because: "the app's screen was already changing on its own",
@@ -105,7 +110,7 @@ extension RunnerTests {
     }
     sleepFor(Self.backSwipeVerificationDelay)
     let observation = Self.navigationVisualObservation(
-      before: .success(before.sample),
+      before: .success(justBefore),
       after: captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight)
     )
     NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)

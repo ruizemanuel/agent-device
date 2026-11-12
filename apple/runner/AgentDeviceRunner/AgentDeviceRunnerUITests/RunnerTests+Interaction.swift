@@ -98,30 +98,76 @@ extension RunnerTests {
     case notSent(message: String, hint: String?)
     case interrupted(message: String, hint: String?)
 
+    /// A refusal raised before any touch: only `.unsupported` is one.
     init(notSent refusal: RunnerInteractionOutcome) {
-      switch refusal {
-      case .unsupported(let message, let hint): self = .notSent(message: message, hint: hint)
-      case .performed: self = .sent
+      guard case .unsupported(let message, let hint) = refusal else {
+        preconditionFailure("a performed gesture is not a refusal before dispatch")
       }
+      self = .notSent(message: message, hint: hint)
     }
   }
 
-  /// The left-edge back swipe across `surface`. A simulator sends it as one edge-masked touch at
-  /// `backSwipeEndpoints`. A device has no such touch and takes an XCTest drag that starts 2 pt
-  /// inside the leading edge: driven on a simulator, that drag popped Settings > General and a React
-  /// Native header-less screen 9 times in 10 each, where one starting 20 pt in popped 2 in 6.
+  /// The left-edge back swipe across the context's screen route. A simulator sends it as one
+  /// edge-masked touch at `backSwipeEndpoints`; a device has no such touch and takes `deviceBackDrag`.
   @MainActor
-  func performBackGesture(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
+  func performBackGesture(app: XCUIApplication, context: SynthesizedCoordinateContext) throws -> TouchDispatch {
 #if targetEnvironment(simulator)
-    return try screenEdgeBackSwipe(app: app, surface: surface)
+    return try screenEdgeBackSwipe(app: app, surface: context.geometry.windowOnScreen.rect)
 #else
-    let target = try normalizedOffsetAnchor(app: app)
-    let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
-      .withOffset(CGVector(dx: 2, dy: 0))
-    let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
-    start.press(forDuration: 0.05, thenDragTo: end)
-    return .sent
+    return try deviceBackDrag(app: app, context: context)
 #endif
+  }
+
+  /// The back drag a device takes, from 2 pt inside the leading edge to 0.8 of the width at
+  /// mid-height. Driven on a simulator, that XCTest drag popped Settings > General and a React Native
+  /// header-less screen 9 times in 10 each, where one starting 20 pt in popped 2 in 6. XCTest cannot
+  /// anchor a coordinate on a tree it cannot serialize (#4221), so there the same path is synthesized
+  /// on the context's booked route instead, without reading the tree.
+  @MainActor
+  func deviceBackDrag(app: XCUIApplication, context: SynthesizedCoordinateContext) throws -> TouchDispatch {
+    guard context.treeUnreadable else {
+      let target = try normalizedOffsetAnchor(app: app)
+      let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+        .withOffset(CGVector(dx: 2, dy: 0))
+      let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+      start.press(forDuration: 0.05, thenDragTo: end)
+      return .sent
+    }
+    let surface = context.geometry.windowOnScreen.rect
+    let samples = [
+      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(surface.minX + 2), y: Double(surface.midY))),
+      RunnerGestureSample(
+        offsetMs: 300,
+        point: RunnerGesturePoint(x: Double(surface.minX + surface.width * 0.8), y: Double(surface.midY))
+      ),
+    ]
+    let plan = RunnerGesturePlan(
+      topology: "single",
+      intent: "fling",
+      executionProfile: "endpoint-hold",
+      contactOrigin: nil,
+      durationMs: 300,
+      viewport: RunnerGestureViewport(
+        x: Double(surface.minX), y: Double(surface.minY),
+        width: Double(surface.width), height: Double(surface.height)
+      ),
+      pointers: [RunnerGesturePointer(pointerId: 0, samples: samples)]
+    )
+    let planned: NativePlannedGesture
+    switch try nativePlannedGesture(app: app, plan: plan, gesture: "back drag") {
+    case .resolved(let resolved): planned = resolved
+    case .refused(let outcome): return TouchDispatch(notSent: outcome)
+    }
+    if let message = RunnerSynthesizedGesture.synthesizeGesture(
+      withApplication: app,
+      resolvedWindow: planned.context.resolvedWindow,
+      interfaceOrientation: planned.orientation,
+      pointerSamples: planned.pointerSamples
+    ) {
+      // The synthesis may fail after its touch went down, so its outcome is not known.
+      return .interrupted(message: message, hint: nil)
+    }
+    return .sent
   }
 #endif
 

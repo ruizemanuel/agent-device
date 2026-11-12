@@ -144,6 +144,9 @@ verifies a change of the app's screen. Its failure codes are:
 | `BACK_SWIPE_NO_CHANGE` | The swipe was sent and the sampled grid (48×96 grayscale cells below the status bar) changed in at most 1% of its cells by more than 24 of 256 levels. | The swipe |
 | `BACK_SWIPE_UNVERIFIED` | The swipe may have run; the outcome is unknown. | Possibly the swipe |
 
+A screen that animates on its own more slowly than the settle window can still be misread as a back
+navigation; any finite window has that limit.
+
 The `backSystem` command was removed (#4460). This protocol carries no version: the daemon and the runner are built from the same
 agent-device version, and a configured `iosXctestrunFile` must be too, so no peer still sends it.
 

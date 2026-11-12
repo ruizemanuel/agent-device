@@ -224,6 +224,32 @@ extension RunnerTests {
     }
   }
 
+  /// A device's back drag presses an XCTest coordinate only where the tree can anchor it. On a tree
+  /// XCTest cannot serialize it synthesizes the same path on the booked route: no tree anchor, no
+  /// coordinate press, which would raise and end the runner (#4221).
+  @MainActor
+  func testDeviceBackDragOnAnUnserializableTreeIsSynthesizedWithoutAnXCTestPress() throws {
+    app.launch()
+    mainOwned.app = app
+    let restoreXCTest = try simulateUnserializableAppTree()
+    defer {
+      restoreXCTest()
+      invalidateCachedTarget(reason: "unit_test_cleanup")
+      app.terminate()
+    }
+    guard let context = try synthesizedCoordinateContext(app: app) else {
+      return XCTAssertFalse(soleScreenRouteIsOpen(for: app), "an open sole-screen route books a context")
+    }
+    XCTAssertTrue(context.treeUnreadable)
+
+    let dispatch = try deviceBackDrag(app: app, context: context)
+
+    guard case .sent = dispatch else {
+      return XCTFail("the drag must be synthesized on the booked route: \(dispatch)")
+    }
+    XCTAssertEqual(RunnerCoordinatePressCounter.presses, 0)
+  }
+
   /// On a tree XCTest cannot serialize, XCTest's coordinate press reads an infinite app frame and
   /// raises an exception that ends the runner test. A long press needs no tree: when the sole-screen
   /// route is open for the app it is synthesized on that screen, and anything else refuses with
