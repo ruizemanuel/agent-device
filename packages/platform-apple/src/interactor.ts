@@ -148,12 +148,6 @@ export function createAppleInteractor(
           dispatched: 'no',
         });
       }
-      if (device.appleOs === 'visionos') {
-        throw new AppError('UNSUPPORTED_OPERATION', 'visionOS has no back gesture', {
-          dispatched: 'no',
-          hint: 'iOS back is a left-edge swipe; visionOS has none. Press the visible back control by its ref.',
-        });
-      }
       // iOS has one back: the verified left-edge swipe, whichever mode was asked.
       await runAppleRunnerCommand(
         device,

@@ -270,31 +270,6 @@ test('iOS back keeps the in-app navigation path, not the tvOS remote', async () 
   assert.deepEqual(commands, [{ command: 'backInApp', appBundleId: 'com.example.app' }]);
 });
 
-test('visionOS back refuses before any runner command: it has no back gesture', async () => {
-  const commands: RunnerCommand[] = [];
-  mockRunAppleRunnerCommand.mockImplementation(async (_device, command) => {
-    commands.push(withoutRunnerCommandId(command));
-    return {};
-  });
-  const interactor = await getInteractor(
-    { ...iosSimulator, appleOs: 'visionos', name: 'Apple Vision Pro' },
-    { appBundleId: 'com.example.app' },
-    createLiveTestHostEnvironment(),
-  );
-
-  await withRunner(() =>
-    assert.rejects(
-      interactor.back(),
-      (error: unknown) =>
-        error instanceof AppError &&
-        error.code === 'UNSUPPORTED_OPERATION' &&
-        error.details?.dispatched === 'no' &&
-        typeof error.details?.hint === 'string',
-    ),
-  );
-  assert.deepEqual(commands, []);
-});
-
 test('ios scroll rejects non-positive amount before sending any runner command', async () => {
   mockRunAppleRunnerCommand.mockImplementation(async () => ({}));
   const interactor = await getInteractor(

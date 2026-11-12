@@ -229,8 +229,9 @@ extension RunnerTests {
   }
 
   static let visualGridSize = (width: 48, height: 96)
-  /// The top rows of the grid the comparison never reads, so the status bar, the clock, and the
-  /// Dynamic Island cannot count as a change, visible or hidden. The tallest phone status bar is 62 pt
+  /// The top rows of the grid the comparison never reads, so in portrait the status bar, the clock,
+  /// and the Dynamic Island cannot count as a change, visible or hidden. In landscape the iPhone
+  /// status bar is hidden and the Dynamic Island sits at a side edge, outside this band. The tallest phone status bar is 62 pt
   /// on an 874 pt screen, 7.1% of the height; 7 of 96 rows is 7.3%. iPad, notched, and home-button
   /// screens carry smaller fractions. A back navigation replaces most of the screen below this band.
   static let backCompareTopRowsIgnored = 7

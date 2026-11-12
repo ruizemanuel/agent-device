@@ -141,7 +141,7 @@ verifies a change of the app's screen. Its failure codes are:
 | --- | --- | --- |
 | `APP_SCREEN_WINDOW_UNRESOLVED`, `APP_SCREEN_UNRESOLVED`, `APP_SCREEN_CAPTURE_UNRENDERABLE`, `APP_SCREEN_OFF_LIT_PANEL` | The screen could not be sampled before the swipe. | Nothing |
 | `BACK_SWIPE_NOT_DISPATCHED` | The swipe was refused before any touch went down. | Nothing |
-| `BACK_SWIPE_NO_CHANGE` | The swipe was sent and the sampled grid (48×96 grayscale cells, with the top 7 rows always left out for the status bar and Dynamic Island) changed in at most 1% of the remaining cells by more than 24 of 256 levels. | The swipe |
+| `BACK_SWIPE_NO_CHANGE` | The swipe was sent and the sampled grid (48×96 grayscale cells, with the top 7 rows always left out; in portrait they hold the status bar and Dynamic Island, and in landscape the iPhone status bar is hidden and the Dynamic Island sits at a side edge, outside those rows) changed in at most 1% of the remaining cells by more than 24 of 256 levels. | The swipe |
 | `BACK_SWIPE_UNVERIFIED` | The swipe may have run; the outcome is unknown. | Possibly the swipe |
 
 The settle window is a run of samples taken 0.25 s apart that agree for at least 0.5 s on a simulator
