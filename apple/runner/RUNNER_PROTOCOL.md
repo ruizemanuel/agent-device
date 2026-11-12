@@ -190,6 +190,8 @@ Successful and failed responses use the same top-level envelope:
 
 An error may carry `"dispatched": "no"` when the runner provably sent nothing, such as a synthesized
 gesture that failed before its events reached XCTest. The daemon reads it as `details.dispatched: no`.
+It is carried only on a delivered reply; a reply lost and recovered through the `status` journal is
+reported as unknown.
 Without it, the code alone decides; a synthesized gesture that failed after its events reached
 XCTest answers `UNSUPPORTED_OPERATION` without the field, an unknown outcome, and is never retried
 through an XCTest fallback.

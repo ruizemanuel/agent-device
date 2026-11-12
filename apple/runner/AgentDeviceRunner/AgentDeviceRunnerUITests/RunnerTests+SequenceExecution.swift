@@ -187,6 +187,7 @@ extension RunnerTests {
     let longPressDurationMs = min(max(step.durationMs ?? 800, 16), 10000)
     if let policyKind = synthesizedPolicyKind(forSequenceStep: step) {
       let attempt: SynthesizedGestureAttempt
+      let attemptStartUptimeMs = currentUptimeMs()
       do {
         attempt = try performSynthesizedGesture(activeApp, kind: policyKind, context: synthesizedContext, synthesize: {
           try synthesizedSequenceStep(
@@ -199,10 +200,11 @@ extension RunnerTests {
           )
         })
       } catch let unknown as RunnerGestureOutcomeUnknown {
-        // The step may have run, so the sequence stops on it instead of retrying it.
+        // The step may have run, so the sequence stops on it instead of retrying it. Its window runs
+        // from before dispatch to the failure, covering whatever part of it ran.
         return finishedSequenceStep(
           step,
-          timing: measureGesture {},
+          timing: (attemptStartUptimeMs, currentUptimeMs()),
           outcome: .unsupported(message: unknown.message, hint: unknown.hint)
         )
       }
