@@ -17,12 +17,13 @@ extension RunnerTests {
     case unconfirmed(ErrorPayload)
   }
 
-  /// The back swipe's endpoints and duration across `surface`. Mirrors the `right-edge` fling preset
+  /// The back swipe's duration, the `right-edge` preset's `GESTURE_FLING_DURATION_MS`.
+  static let backSwipeDurationMs = 100.0
+
+  /// The back swipe's endpoints across `surface`. Mirrors the `right-edge` fling preset
   /// (`buildSwipePresetGesturePlan` and `clampGestureCoordinate` in packages/contracts/src/scroll-gesture.ts):
   /// 1% to 85% of the width at half the height, truncated, then held 8 pt inside the edges.
   /// contracts/fixtures/back-swipe-geometry.json holds both sides to the same table.
-  static let backSwipeDurationMs = 100.0
-
   static func backSwipeEndpoints(in surface: CGRect) -> (start: CGPoint, end: CGPoint) {
     func axis(_ size: CGFloat, percent: CGFloat) -> CGFloat {
       let margin: CGFloat = 8
@@ -75,8 +76,17 @@ extension RunnerTests {
     guard let context = try synthesizedCoordinateContext(app: app) else {
       return .refused(Self.backScreenRefusal(.unresolvedWindow))
     }
+    guard let statusBarHeight = backStatusBarHeight(app: app, context: context) else {
+      return .refused(
+        ErrorPayload(
+          code: RunnerWireErrorCode.backSwipeNotDispatched,
+          message: "back did not swipe: the app's status bar could not be read, so its screen cannot be compared.",
+          hint: "Press the visible back or close control by its ref."
+        )
+      )
+    }
     let before: (sample: Data, settled: Bool)
-    switch settledBackVisualState(app: app, context: context) {
+    switch settledBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
     case .success(let settled): before = settled
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
@@ -96,7 +106,7 @@ extension RunnerTests {
     sleepFor(Self.backSwipeVerificationDelay)
     let observation = Self.navigationVisualObservation(
       before: .success(before.sample),
-      after: captureBackVisualState(app: app, context: context)
+      after: captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight)
     )
     NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)
     return Self.backSwipeOutcome(observation: observation)
@@ -144,12 +154,13 @@ extension RunnerTests {
   /// first of them. `settled` is false when the budget ran out first.
   private func settledBackVisualState(
     app: XCUIApplication,
-    context: SynthesizedCoordinateContext
+    context: SynthesizedCoordinateContext,
+    statusBarHeight: CGFloat
   ) -> Result<(sample: Data, settled: Bool), RunnerAppScreenCaptureFailure> {
     var stableRun: [Data] = []
     for index in 0..<Self.backSwipeSettleSampleBudget {
       if index > 0 { sleepFor(Self.backSwipeVerificationDelay) }
-      switch captureBackVisualState(app: app, context: context) {
+      switch captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
       case .failure(let refusal):
         return .failure(refusal)
       case .success(let sample):
@@ -164,12 +175,14 @@ extension RunnerTests {
     return .success((stableRun[stableRun.count - 1], false))
   }
 
-  /// The frame the swipe compares, as a coarse grayscale grid when the display answered and the
-  /// typed refusal otherwise. It samples the app's own screen only: a system-surface capture reads as "unchanged"
-  /// across a before/after pair and launders a wrong-process frame into a false refusal.
+  /// The frame the swipe compares, below the status bar, as a coarse grayscale grid when the display
+  /// answered and the typed refusal otherwise. It samples the app's own screen only: a system-surface
+  /// capture reads as "unchanged" across a before/after pair and launders a wrong-process frame into
+  /// a false refusal. The status bar changes on its own (the clock, signal, a recording indicator).
   private func captureBackVisualState(
     app: XCUIApplication,
-    context: SynthesizedCoordinateContext
+    context: SynthesizedCoordinateContext,
+    statusBarHeight: CGFloat
   ) -> Result<Data, RunnerAppScreenCaptureFailure> {
 #if os(iOS)
     return Self.navigationVisualSample(
@@ -178,8 +191,7 @@ extension RunnerTests {
         ? captureSoleAppScreen(app: app)
         : captureResolvedAppScreen(app: app, litPanel: requestLitPanel),
       encoding: { screen in
-        // The status bar changes on its own (the clock, signal, a recording indicator).
-        let statusBar = screenTopSafeAreaInset() * CGFloat(screen.pixelsPerPoint)
+        let statusBar = statusBarHeight * CGFloat(screen.pixelsPerPoint)
         return runnerCGImage(from: screen.image).flatMap { Self.visualGrid(of: $0, excludingTop: statusBar) }
       }
     )
@@ -206,14 +218,19 @@ extension RunnerTests {
   static let visualChangedCellFraction = 0.01
 
 #if os(iOS)
-  /// The screen's top inset, read from the runner's own window scenes: the status-bar band is a
-  /// screen-level fact, so the runner's full-screen host window reports the one the app sees.
-  private func screenTopSafeAreaInset() -> CGFloat {
-    UIApplication.shared.connectedScenes
-      .compactMap { $0 as? UIWindowScene }
-      .flatMap(\.windows)
-      .map(\.safeAreaInsets.top)
-      .max() ?? 0
+  /// The bottom of the status bar over the target app, in screen points, measured rather than read
+  /// from the runner process: the app's own status bar element when its tree exposes one, else the
+  /// SpringBoard status bar drawn over it. Nil when neither can be read; the app's tree is not queried
+  /// when XCTest cannot serialize it. Without it no sample can be compared, so back refuses.
+  private func backStatusBarHeight(app: XCUIApplication, context: SynthesizedCoordinateContext) -> CGFloat? {
+    let sources = context.treeUnreadable ? [springboard] : [app, springboard]
+    for source in sources {
+      let statusBar = source.statusBars.firstMatch
+      guard statusBar.exists else { continue }
+      let frame = statusBar.frame
+      if SnapshotGeometry.isPositiveFinite(frame) { return frame.maxY }
+    }
+    return nil
   }
 #endif
 

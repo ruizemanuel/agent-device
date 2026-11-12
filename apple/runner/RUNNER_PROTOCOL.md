@@ -135,9 +135,16 @@ than silently applied:
 ```
 
 `backInApp` is the only back command. On iOS the runner answers it with the left-edge back swipe and
-verifies a change of the app's screen; its refusals are `BACK_SWIPE_NO_CHANGE`,
-`BACK_SWIPE_UNVERIFIED`, and `BACK_SWIPE_NOT_DISPATCHED`. The `backSystem` command was removed
-(#4460). This protocol carries no version: the daemon and the runner are built from the same
+verifies a change of the app's screen. Its failure codes are:
+
+| Code | When | Sent |
+| --- | --- | --- |
+| `APP_SCREEN_WINDOW_UNRESOLVED`, `APP_SCREEN_UNRESOLVED`, `APP_SCREEN_CAPTURE_UNRENDERABLE`, `APP_SCREEN_OFF_LIT_PANEL` | The screen could not be sampled before the swipe. | Nothing |
+| `BACK_SWIPE_NOT_DISPATCHED` | The swipe was refused before any touch went down. | Nothing |
+| `BACK_SWIPE_NO_CHANGE` | The swipe was sent and the screen provably did not change. | The swipe |
+| `BACK_SWIPE_UNVERIFIED` | The swipe may have run; the outcome is unknown. | Possibly the swipe |
+
+The `backSystem` command was removed (#4460). This protocol carries no version: the daemon and the runner are built from the same
 agent-device version, and a configured `iosXctestrunFile` must be too, so no peer still sends it.
 
 `appState` answers `data.applicationState` with the named app's `XCUIApplication.State` by name

@@ -595,6 +595,7 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
         [self.view insertSubview:band atIndex:0];
         [bands addObject:band];
       }
+      [self.animationTimer invalidate];
       self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *timer) {
         for (UIView *band in bands) {
           band.backgroundColor = [UIColor colorWithWhite:arc4random_uniform(256) / 255.0 alpha:1];
@@ -605,6 +606,7 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
     // a carousel does: one quiet pair of samples must not pass it for settled.
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--slow-toggle"]) {
       __weak UIView *view = self.view;
+      [self.animationTimer invalidate];
       self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
         view.backgroundColor = [view.backgroundColor isEqual:UIColor.blackColor] ? UIColor.whiteColor : UIColor.blackColor;
       }];

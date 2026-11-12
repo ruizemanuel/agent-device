@@ -74,35 +74,25 @@ extension RunnerTests {
     assertBackNeverPerformed(status)
   }
 
-  /// The verification samples the screen, not the accessibility tree, so a tree XCTest cannot read
-  /// still yields a verified answer through the sole screen: a swipe the app answers is performed,
-  /// and one it ignores is the typed no-change refusal, never a false success.
+  /// The samples leave out the target app's status bar, read from the app's own tree. A tree XCTest
+  /// cannot read gives no status bar, so no sample can be compared and back refuses before it sends
+  /// anything, rather than guessing an inset and calling the result verified.
   @MainActor
-  func testInAppBackOnAnUnreadableTreeVerifiesTheSwipeOnTheSoleScreen() throws {
+  func testInAppBackOnAnUnreadableTreeRefusesBeforeTheSwipe() throws {
     let status = try launchBackFixture(["--agent-device-back-regression"])
-    // Terminates whichever fixture instance is running when the test leaves, on every path.
     defer { endBackFixture() }
-    let answered = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
-    let soleScreenOpen = soleScreenRouteIsOpen(for: app)
-    let answeredLabel = status.label
-    endBackFixture()
-    _ = try launchBackFixture([])
-    let ignored = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
 
-    guard soleScreenOpen else {
-      guard case .refused = answered, case .refused = ignored else {
-        return XCTFail("without a window or a sole screen there is nothing to verify, so back must not swipe")
-      }
-      return
+    let outcome = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
+
+    guard case .refused(let payload) = outcome else {
+      return XCTFail("without the app's status bar back must refuse before the swipe")
     }
-    guard case .performed = answered else {
-      return XCTFail("a swipe the app answered must verify on the sole screen")
-    }
-    XCTAssertEqual(answeredLabel, "Back performed")
-    guard case .unconfirmed(let payload) = ignored else {
-      return XCTFail("a swipe the app ignored must not read as performed")
-    }
-    XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeNoChange)
+    XCTAssertTrue(
+      payload.code == RunnerWireErrorCode.backSwipeNotDispatched
+        || payload.code == RunnerAppScreenCaptureFailure.unresolvedWindow.rawValue,
+      "nothing was sent: \(payload.code ?? "nil")"
+    )
+    assertBackNeverPerformed(status)
   }
 
   /// Only a swipe refused before touch-down is the not-dispatched refusal; one cut short after its
