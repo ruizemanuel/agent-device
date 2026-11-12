@@ -206,6 +206,12 @@ static NSUInteger AgentDeviceDigitCount(NSString *text, NSUInteger limit) {
 
 @implementation AgentDeviceRunnerFixtureViewController
 
+// `--hide-status-bar` stands in for a landscape iPhone, full-screen video, or an RN screen that hides
+// its status bar.
+- (BOOL)prefersStatusBarHidden {
+  return [NSProcessInfo.processInfo.arguments containsObject:@"--hide-status-bar"];
+}
+
 // An animation that never ends is what "busy" looks like to XCTest while it decides whether the app
 // may receive an event: the app keeps reporting work in flight, which is the state that cost an alert
 // command its whole deadline in #2546. It stops the moment an alert button is answered, since that

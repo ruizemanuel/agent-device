@@ -74,28 +74,22 @@ extension RunnerTests {
     assertBackNeverPerformed(status)
   }
 
-  /// No status-bar frame can be read at all: the app's tree is unreadable and every frame, the
-  /// SpringBoard status bar's included, reads empty. No sample can be compared, so back refuses before
-  /// it sends anything, rather than guessing an inset and calling the result verified.
+  /// A hidden status bar (landscape, full-screen video, an RN screen that hides it) changes nothing:
+  /// the comparison always leaves the same top band out, so back swipes and verifies as anywhere else.
   @MainActor
-  func testInAppBackOnAnUnreadableTreeRefusesBeforeTheSwipe() throws {
-    let status = try launchBackFixture(["--agent-device-back-regression"])
+  func testInAppBackWithAHiddenStatusBarIsPerformed() throws {
+    let status = try launchBackFixture(["--agent-device-back-regression", "--hide-status-bar"])
     defer { endBackFixture() }
-    XCTAssertTrue(soleScreenRouteIsOpen(for: app), "the status-bar read is reached only through an open route")
 
-    let outcome = try withRejectedAppTree(framesReadable: false) { try performInAppBack(app: app) }
-
-    guard case .refused(let payload) = outcome else {
-      return XCTFail("without any status-bar frame back must refuse before the swipe")
+    guard case .performed = try performInAppBack(app: app) else {
+      return XCTFail("a screen without a status bar must still swipe and verify")
     }
-    XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeNotDispatched)
-    XCTAssertTrue(payload.message.contains("status bar"), payload.message)
-    assertBackNeverPerformed(status)
+    XCTAssertEqual(status.label, "Back performed")
   }
 
   /// The route witness: after the app's tree rejects the windows query, back reaches the screen
-  /// through whichever route opens (the sole screen where the app proves it fills it), reads the
-  /// status bar from SpringBoard, swipes, and verifies the change there.
+  /// through whichever route opens (the sole screen where the app proves it fills it), swipes, and
+  /// verifies the change there.
   @MainActor
   func testInAppBackAfterARejectedQuerySwipesAndVerifiesOnTheRouteThatOpens() throws {
     let status = try launchBackFixture(["--agent-device-back-regression"])
@@ -210,9 +204,9 @@ extension RunnerTests {
     typealias Sample = Result<Data, RunnerAppScreenCaptureFailure>
     let refused: Sample = .failure(.unresolvedScreen)
     let windowless: Sample = .failure(.unresolvedWindow)
-    let captured: Sample = .success(Data(repeating: 0, count: 100))
-    let changed: Sample = .success(Data(repeating: 255, count: 100))
-    let other: Sample = .success(Data(repeating: 0, count: 100))
+    let captured: Sample = .success(grid(0))
+    let changed: Sample = .success(grid(255))
+    let other: Sample = .success(grid(0))
 
     XCTAssertEqual(Self.navigationVisualObservation(before: captured, after: changed), .changed, "changed")
     XCTAssertEqual(Self.navigationVisualObservation(before: captured, after: captured), .unchanged, "unchanged")
@@ -236,17 +230,56 @@ extension RunnerTests {
   /// A back navigation redraws most of the screen; a spinner, a clock tick, or a low-contrast
   /// shimmer must not read as one, or as a screen that never settles.
   func testVisualSamplesDifferOnlyForNavigationSizedChange() {
-    let base = Data(repeating: 100, count: 1000)
+    let base = grid(100)
+    let below = Self.backCompareTopRowsIgnored * Self.visualGridSize.width
     var spinner = base
-    for index in 0..<5 { spinner[index] = 255 }
-    let shimmer = Data(repeating: 120, count: 1000)
+    for index in below..<(below + 20) { spinner[index] = 255 }
+    let shimmer = grid(120)
     var pushed = base
-    for index in 0..<300 { pushed[index] = 255 }
+    for index in below..<(below + 1500) { pushed[index] = 255 }
 
-    XCTAssertFalse(Self.visualSamplesDiffer(base, spinner), "0.5% of cells is not navigation")
+    XCTAssertFalse(Self.visualSamplesDiffer(base, spinner), "20 cells below the top band is not navigation")
     XCTAssertFalse(Self.visualSamplesDiffer(base, shimmer), "every cell moving by 20 stays inside the tolerance")
-    XCTAssertTrue(Self.visualSamplesDiffer(base, pushed), "30% of cells redrawn is navigation")
-    XCTAssertTrue(Self.visualSamplesDiffer(base, Data(repeating: 100, count: 999)), "a different grid size is uncomparable")
+    XCTAssertTrue(Self.visualSamplesDiffer(base, pushed), "a third of the screen redrawn is navigation")
+    XCTAssertTrue(Self.visualSamplesDiffer(base, base.dropLast()), "a different grid size is uncomparable")
+  }
+
+  /// The top band (status bar, clock, Dynamic Island) is never compared, so a clock tick or a status
+  /// bar that appears or hides cannot count as a change, while the first row below it does.
+  func testVisualSamplesIgnoreAChangeConfinedToTheTopBand() {
+    let base = grid(100)
+    let band = Self.backCompareTopRowsIgnored * Self.visualGridSize.width
+    var clockTick = base
+    for index in 0..<band { clockTick[index] = 255 }
+    var firstRowBelow = base
+    for index in band..<(band + Self.visualGridSize.width) { firstRowBelow[index] = 255 }
+
+    XCTAssertFalse(Self.visualSamplesDiffer(base, clockTick), "every cell of the top band changed")
+    XCTAssertTrue(Self.visualSamplesDiffer(base, firstRowBelow), "one full row below the band is over 1%")
+  }
+
+  /// The grid's first row is the top of the screen, so the ignored band is where the status bar is.
+  func testVisualGridKeepsTheTopOfTheScreenFirst() throws {
+    let width = 120, height = 240
+    let context = try XCTUnwrap(CGContext(
+      data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+    ))
+    context.setFillColor(gray: 0, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    context.setFillColor(gray: 1, alpha: 1)
+    // CoreGraphics' origin is bottom-left, so the top 10% of the image is the high-y strip.
+    context.fill(CGRect(x: 0, y: CGFloat(height) * 0.9, width: CGFloat(width), height: CGFloat(height) * 0.1))
+    let image = try XCTUnwrap(context.makeImage())
+
+    let cells = try XCTUnwrap(Self.visualGrid(of: image))
+
+    XCTAssertGreaterThan(cells[0], 200, "the first grid row is the top of the screen")
+    XCTAssertLessThan(cells[cells.count - 1], 50, "the last grid row is the bottom")
+  }
+
+  private func grid(_ value: UInt8) -> Data {
+    Data(repeating: value, count: Self.visualGridSize.width * Self.visualGridSize.height)
   }
 
   /// The runner's back swipe and the host's `right-edge` preset read the same golden table.
@@ -281,8 +314,8 @@ extension RunnerTests {
 
   /// A screen that moved between settling and the swipe has no baseline to credit a change against.
   func testBackSwipeBaselineHoldsOnlyWhenSettledAndUnmovedBeforeTheSwipe() {
-    let baseline = Data(repeating: 100, count: 1000)
-    let moved = Data(repeating: 255, count: 1000)
+    let baseline = grid(100)
+    let moved = grid(255)
 
     XCTAssertTrue(Self.backSwipeBaselineHolds(settled: true, baseline: baseline, justBefore: baseline))
     XCTAssertFalse(Self.backSwipeBaselineHolds(settled: true, baseline: baseline, justBefore: moved))

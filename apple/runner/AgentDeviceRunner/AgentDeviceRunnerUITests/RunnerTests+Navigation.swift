@@ -82,23 +82,14 @@ extension RunnerTests {
     guard let context = try synthesizedCoordinateContext(app: app) else {
       return .refused(Self.backScreenRefusal(.unresolvedWindow))
     }
-    guard let statusBarHeight = backStatusBarHeight(app: app, context: context) else {
-      return .refused(
-        ErrorPayload(
-          code: RunnerWireErrorCode.backSwipeNotDispatched,
-          message: "back did not swipe: the app's status bar could not be read, so its screen cannot be compared.",
-          hint: "Press the visible back or close control by its ref."
-        )
-      )
-    }
     let before: (sample: Data, stableSinceMs: Double, settled: Bool)
-    switch settledBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
+    switch settledBackVisualState(app: app, context: context) {
     case .success(let settled): before = settled
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
     // One more sample right before the swipe: the change credited to the swipe is measured from it.
     let justBefore: Data
-    switch captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
+    switch captureBackVisualState(app: app, context: context) {
     case .success(let sample): justBefore = sample
     case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
@@ -120,7 +111,7 @@ extension RunnerTests {
       )
     }
     sleepFor(Self.backSwipeVerificationDelay)
-    let after = captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight)
+    let after = captureBackVisualState(app: app, context: context)
     guard Self.backSwipeGapIsCovered(
       stableSinceMs: before.stableSinceMs,
       justBeforeMs: justBeforeMs,
@@ -137,12 +128,12 @@ extension RunnerTests {
     NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)
     return Self.backSwipeOutcome(observation: observation)
 #else
-    // visionOS has no edge swipe that pops a navigation stack.
+    // visionOS has no edge swipe that pops a navigation stack; the host refuses before dispatch.
     return .refused(
       ErrorPayload(
-        code: RunnerWireErrorCode.backSwipeNotDispatched,
-        message: "back has no gesture on this platform, so nothing was sent.",
-        hint: "Press the visible back control by its ref."
+        code: "UNSUPPORTED_OPERATION",
+        message: "visionOS has no back gesture",
+        hint: "iOS back is a left-edge swipe; visionOS has none. Press the visible back control by its ref."
       )
     )
 #endif
@@ -181,14 +172,13 @@ extension RunnerTests {
   /// budget ran out first.
   private func settledBackVisualState(
     app: XCUIApplication,
-    context: SynthesizedCoordinateContext,
-    statusBarHeight: CGFloat
+    context: SynthesizedCoordinateContext
   ) -> Result<(sample: Data, stableSinceMs: Double, settled: Bool), RunnerAppScreenCaptureFailure> {
     var runStart: (sample: Data, ms: Double)?
     var last = Data()
     for index in 0..<Self.backSwipeSettleSampleBudget {
       if index > 0 { sleepFor(Self.backSwipeVerificationDelay) }
-      switch captureBackVisualState(app: app, context: context, statusBarHeight: statusBarHeight) {
+      switch captureBackVisualState(app: app, context: context) {
       case .failure(let refusal):
         return .failure(refusal)
       case .success(let sample):
@@ -210,8 +200,7 @@ extension RunnerTests {
   /// a false refusal. The status bar changes on its own (the clock, signal, a recording indicator).
   private func captureBackVisualState(
     app: XCUIApplication,
-    context: SynthesizedCoordinateContext,
-    statusBarHeight: CGFloat
+    context: SynthesizedCoordinateContext
   ) -> Result<Data, RunnerAppScreenCaptureFailure> {
 #if os(iOS)
     return Self.navigationVisualSample(
@@ -219,10 +208,7 @@ extension RunnerTests {
       from: context.resolvedWindow == nil && requestLitPanel == nil
         ? captureSoleAppScreen(app: app)
         : captureResolvedAppScreen(app: app, litPanel: requestLitPanel),
-      encoding: { screen in
-        let statusBar = statusBarHeight * CGFloat(screen.pixelsPerPoint)
-        return runnerCGImage(from: screen.image).flatMap { Self.visualGrid(of: $0, excludingTop: statusBar) }
-      }
+      encoding: { runnerCGImage(from: $0.image).flatMap(Self.visualGrid) }
     )
 #else
     return .failure(.unresolvedScreen)
@@ -243,35 +229,18 @@ extension RunnerTests {
   }
 
   static let visualGridSize = (width: 48, height: 96)
+  /// The top rows of the grid the comparison never reads, so the status bar, the clock, and the
+  /// Dynamic Island cannot count as a change, visible or hidden. The tallest phone status bar is 62 pt
+  /// on an 874 pt screen, 7.1% of the height; 7 of 96 rows is 7.3%. iPad, notched, and home-button
+  /// screens carry smaller fractions. A back navigation replaces most of the screen below this band.
+  static let backCompareTopRowsIgnored = 7
   static let visualCellTolerance = 24
   static let visualChangedCellFraction = 0.01
 
-#if os(iOS)
-  /// The bottom of the status bar over the target app, in screen points, measured rather than read
-  /// from the runner process: the app's own status bar element when its tree exposes one, else the
-  /// SpringBoard status bar drawn over it. An unreadable app tree is not queried and goes straight to
-  /// SpringBoard. Nil only when no status-bar frame can be read at all; then no sample can be
-  /// compared, so back refuses.
-  private func backStatusBarHeight(app: XCUIApplication, context: SynthesizedCoordinateContext) -> CGFloat? {
-    let sources = context.treeUnreadable ? [springboard] : [app, springboard]
-    for source in sources {
-      let statusBar = source.statusBars.firstMatch
-      guard statusBar.exists else { continue }
-      let frame = statusBar.frame
-      if SnapshotGeometry.isPositiveFinite(frame) { return frame.maxY }
-    }
-    return nil
-  }
-#endif
 
-  /// The screen below its top `excludingTop` pixels, drawn into a small grayscale grid. A back
-  /// navigation redraws most of it, while a spinner, a caret, or a material shimmer moves few
-  /// cells or moves them by little.
-  static func visualGrid(of fullImage: CGImage, excludingTop topPixels: CGFloat = 0) -> Data? {
-    let top = min(max(topPixels, 0), CGFloat(fullImage.height - 1))
-    guard let image = fullImage.cropping(
-      to: CGRect(x: 0, y: top, width: CGFloat(fullImage.width), height: CGFloat(fullImage.height) - top)
-    ) else { return nil }
+  /// The screen drawn into a small grayscale grid, top row first. A back navigation redraws most of
+  /// it, while a spinner, a caret, or a material shimmer moves few cells or moves them by little.
+  static func visualGrid(of image: CGImage) -> Data? {
     let (width, height) = visualGridSize
     var cells = [UInt8](repeating: 0, count: width * height)
     let drawn = cells.withUnsafeMutableBytes { buffer -> Bool in
@@ -287,13 +256,16 @@ extension RunnerTests {
     return drawn ? Data(cells) : nil
   }
 
-  /// Two grids differ when more than 1% of their cells moved by more than the tolerance.
+  /// Two grids differ when, below the top `backCompareTopRowsIgnored` rows, more than 1% of the cells
+  /// moved by more than the tolerance.
   static func visualSamplesDiffer(_ lhs: Data, _ rhs: Data) -> Bool {
     guard lhs.count == rhs.count else { return true }
-    let moved = zip(lhs, rhs).reduce(0) { count, pair in
+    let ignored = min(lhs.count, backCompareTopRowsIgnored * visualGridSize.width)
+    let compared = zip(lhs.dropFirst(ignored), rhs.dropFirst(ignored))
+    let moved = compared.reduce(0) { count, pair in
       abs(Int(pair.0) - Int(pair.1)) > visualCellTolerance ? count + 1 : count
     }
-    return Double(moved) > Double(lhs.count) * visualChangedCellFraction
+    return Double(moved) > Double(lhs.count - ignored) * visualChangedCellFraction
   }
 
   /// Whether the screen had been still for at least as long as the swipe's gap: the time from the
