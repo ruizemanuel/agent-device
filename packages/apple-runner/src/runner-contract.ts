@@ -333,11 +333,11 @@ export const NO_TEXT_INPUT_AT_POINT_RUNNER_CODE = 'NO_TEXT_INPUT_AT_POINT';
 export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAILABLE';
 
 /**
- * The runner codes for an iOS `back` swipe. NO_CHANGE: the swipe was sent and the screen did not
- * change. UNVERIFIED: the swipe was sent but the screen kept changing before it or could not be
- * sampled after it. Both ran the swipe, so they stay `unknown`. NOT_DISPATCHED: the swipe was
- * refused before any touch went down. UNSUPPORTED_PLATFORM: the platform has no back gesture
- * (visionOS), so nothing ran.
+ * The runner codes for an iOS `back` swipe. BACK_SWIPE_NO_CHANGE: the swipe was sent and the screen
+ * did not change. BACK_SWIPE_UNVERIFIED: the swipe was sent but the screen kept changing before it
+ * or could not be sampled after it. Both ran the swipe, so they stay `unknown`.
+ * BACK_SWIPE_NOT_DISPATCHED: the swipe was refused before any touch went down.
+ * BACK_UNSUPPORTED_PLATFORM: the platform has no back gesture (visionOS), so nothing ran.
  */
 const BACK_SWIPE_NO_CHANGE_RUNNER_CODE = 'BACK_SWIPE_NO_CHANGE';
 const BACK_SWIPE_UNVERIFIED_RUNNER_CODE = 'BACK_SWIPE_UNVERIFIED';
