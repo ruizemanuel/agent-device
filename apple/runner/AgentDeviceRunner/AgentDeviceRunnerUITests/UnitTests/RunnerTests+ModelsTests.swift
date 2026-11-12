@@ -123,7 +123,7 @@ extension RunnerTests {
     }
   }
 
-  private func runnerContractFixture(_ name: String) throws -> Any {
+  func runnerContractFixture(_ name: String) throws -> Any {
     let fixtureURL = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
       .deletingLastPathComponent()

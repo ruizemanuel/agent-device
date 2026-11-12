@@ -44,6 +44,20 @@ extension RunnerTests {
     XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeUnverified)
   }
 
+  /// A screen that changes on its own every 0.5 s gives one quiet pair of samples 0.25 s apart, then
+  /// changes before the after sample. Settling needs three agreeing samples, so it is never settled
+  /// and back reports an unknown outcome instead of crediting the swipe.
+  @MainActor
+  func testInAppBackOnAScreenChangingSlowerThanOneDelayIsNotPerformed() throws {
+    _ = try launchBackFixture(["--agent-device-back-regression", "--slow-toggle"])
+    defer { endBackFixture() }
+
+    guard case .unconfirmed(let payload) = try performInAppBack(app: app) else {
+      return XCTFail("a screen that toggles on its own must not read as performed")
+    }
+    XCTAssertEqual(payload.code, RunnerWireErrorCode.backSwipeUnverified)
+  }
+
   @MainActor
   func testInAppBackDoesNotSwipeOffTheLitPanel() throws {
     let status = try launchBackFixture(["--agent-device-back-regression"])
@@ -103,7 +117,9 @@ extension RunnerTests {
     else {
       return XCTFail("a swipe cut short after touch-down must not claim nothing was dispatched")
     }
-    XCTAssertEqual(interrupted.code, "UNSUPPORTED_OPERATION")
+    // It may already have navigated, so it is the unknown outcome, never a retryable refusal.
+    XCTAssertEqual(interrupted.code, RunnerWireErrorCode.backSwipeUnverified)
+    XCTAssertTrue(interrupted.hint?.contains("snapshot") == true)
   }
 
   /// Fails when the fixture reports a back within a short window, so a gesture the app handles
@@ -225,6 +241,28 @@ extension RunnerTests {
     XCTAssertFalse(Self.visualSamplesDiffer(base, shimmer), "every cell moving by 20 stays inside the tolerance")
     XCTAssertTrue(Self.visualSamplesDiffer(base, pushed), "30% of cells redrawn is navigation")
     XCTAssertTrue(Self.visualSamplesDiffer(base, Data(repeating: 100, count: 999)), "a different grid size is uncomparable")
+  }
+
+  /// The runner's back swipe and the host's `right-edge` preset read the same golden table.
+  func testBackSwipeEndpointsMatchTheHostRightEdgePreset() throws {
+    let cases = try XCTUnwrap(runnerContractFixture("back-swipe-geometry.json") as? [[String: Any]])
+    XCTAssertFalse(cases.isEmpty)
+    func point(_ value: Any?) throws -> CGPoint {
+      let object = try XCTUnwrap(value as? [String: Double])
+      return CGPoint(x: try XCTUnwrap(object["x"]), y: try XCTUnwrap(object["y"]))
+    }
+    for fixture in cases {
+      let name = fixture["name"] as? String ?? "?"
+      let surface = try XCTUnwrap(fixture["surface"] as? [String: Double], name)
+      let rect = CGRect(
+        x: try XCTUnwrap(surface["x"]), y: try XCTUnwrap(surface["y"]),
+        width: try XCTUnwrap(surface["width"]), height: try XCTUnwrap(surface["height"])
+      )
+      let endpoints = Self.backSwipeEndpoints(in: rect)
+      XCTAssertEqual(endpoints.start, try point(fixture["start"]), name)
+      XCTAssertEqual(endpoints.end, try point(fixture["end"]), name)
+      XCTAssertEqual(Self.backSwipeDurationMs, fixture["durationMs"] as? Double, name)
+    }
   }
 
   func testBackSwipeOutcomeNamesNoChangeAndAnUnsampledScreenApart() {

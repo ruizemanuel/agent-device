@@ -130,6 +130,16 @@ than silently applied:
 { "command": "appState", "appBundleId": "com.example.app" }
 ```
 
+```json
+{ "command": "backInApp", "appBundleId": "com.example.app" }
+```
+
+`backInApp` is the only back command. On iOS the runner answers it with the left-edge back swipe and
+verifies a change of the app's screen; its refusals are `BACK_SWIPE_NO_CHANGE`,
+`BACK_SWIPE_UNVERIFIED`, and `BACK_SWIPE_NOT_DISPATCHED`. The `backSystem` command was removed
+(#4460). This protocol carries no version: the daemon and the runner are built from the same
+agent-device version, and a configured `iosXctestrunFile` must be too, so no peer still sends it.
+
 `appState` answers `data.applicationState` with the named app's `XCUIApplication.State` by name
 (`runningForeground`, `runningBackground`, `runningBackgroundSuspended`, `notRunning`, `unknown`).
 It is a lifecycle read, so the activation preflight is skipped and the state reported is the one

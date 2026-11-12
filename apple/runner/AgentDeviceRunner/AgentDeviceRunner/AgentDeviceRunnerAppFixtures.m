@@ -601,6 +601,14 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
         }
       }];
     }
+    // `--slow-toggle` repaints the whole screen every 0.5 s, slower than one verification delay, as
+    // a carousel does: one quiet pair of samples must not pass it for settled.
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--slow-toggle"]) {
+      __weak UIView *view = self.view;
+      self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
+        view.backgroundColor = [view.backgroundColor isEqual:UIColor.blackColor] ? UIColor.whiteColor : UIColor.blackColor;
+      }];
+    }
   }
 
   if ([NSProcessInfo.processInfo.arguments containsObject:@"--agent-device-alert-replacement-regression"]) {

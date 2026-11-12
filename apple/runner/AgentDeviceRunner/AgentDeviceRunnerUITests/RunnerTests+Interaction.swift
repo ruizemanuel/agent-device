@@ -106,9 +106,10 @@ extension RunnerTests {
     }
   }
 
-  /// The left-edge back swipe across `surface`, from 8 pt inside the leading edge. A simulator
-  /// sends it as one edge-masked touch, because UIKit's interactive pop ignores an XCTest drag that
-  /// lacks the mask; a device has no such touch and takes the XCTest drag from the same origin.
+  /// The left-edge back swipe across `surface`. A simulator sends it as one edge-masked touch at
+  /// `backSwipeEndpoints`. A device has no such touch and takes an XCTest drag that starts 2 pt
+  /// inside the leading edge: driven on a simulator, that drag popped Settings > General and a React
+  /// Native header-less screen 9 times in 10 each, where one starting 20 pt in popped 2 in 6.
   @MainActor
   func performBackGesture(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
 #if targetEnvironment(simulator)
@@ -116,8 +117,8 @@ extension RunnerTests {
 #else
     let target = try normalizedOffsetAnchor(app: app)
     let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
-      .withOffset(CGVector(dx: 8, dy: 0))
-    let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+      .withOffset(CGVector(dx: 2, dy: 0))
+    let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
     start.press(forDuration: 0.05, thenDragTo: end)
     return .sent
 #endif

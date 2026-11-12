@@ -49,16 +49,15 @@ extension RunnerTests {
     return .sent
   }
 
-  /// The left-edge back swipe as the `right-edge` gesture preset plans it: from 8 pt inside the
-  /// leading edge to 85% of the width at mid-height, in 100 ms.
+  /// The left-edge back swipe at `backSwipeEndpoints`, as one edge-masked touch.
   @MainActor
   func screenEdgeBackSwipe(app: XCUIApplication, surface: CGRect) throws -> TouchDispatch {
-    let y = Double(surface.midY)
+    let (start, end) = Self.backSwipeEndpoints(in: surface)
     let samples = [
-      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(surface.minX + 8), y: y)),
+      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(start.x), y: Double(start.y))),
       RunnerGestureSample(
-        offsetMs: 100,
-        point: RunnerGesturePoint(x: Double(surface.minX + surface.width * 0.85), y: y)
+        offsetMs: Self.backSwipeDurationMs,
+        point: RunnerGesturePoint(x: Double(end.x), y: Double(end.y))
       ),
     ]
     return try dispatchScreenEdgeTouch(app: app, plan: RunnerGesturePlan(
@@ -66,7 +65,7 @@ extension RunnerTests {
       intent: "fling",
       executionProfile: "endpoint-hold",
       contactOrigin: runnerScreenEdgeContactOrigin,
-      durationMs: 100,
+      durationMs: Self.backSwipeDurationMs,
       viewport: RunnerGestureViewport(
         x: Double(surface.minX),
         y: Double(surface.minY),

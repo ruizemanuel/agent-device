@@ -3,7 +3,11 @@ import XCTest
 
 extension RunnerTests {
   static let backSwipeVerificationDelay: TimeInterval = 0.25
-  static let backSwipeSettleSamples = 4
+  /// Three agreeing samples span two verification delays, at least the gap from the last before
+  /// sample to the after sample, so a screen that changes on its own more slowly than one delay
+  /// cannot pass for settled and then read as the swipe's effect.
+  static let backSwipeStableSamples = 3
+  static let backSwipeSettleSampleBudget = 6
 
   /// What one `back` concluded. `.refused` dispatched nothing. `.unconfirmed` ran the back gesture,
   /// or may have, without proof that it navigated back.
@@ -11,6 +15,25 @@ extension RunnerTests {
     case performed
     case refused(ErrorPayload)
     case unconfirmed(ErrorPayload)
+  }
+
+  /// The back swipe's endpoints and duration across `surface`. Mirrors the `right-edge` fling preset
+  /// (`buildSwipePresetGesturePlan` and `clampGestureCoordinate` in packages/contracts/src/scroll-gesture.ts):
+  /// 1% to 85% of the width at half the height, truncated, then held 8 pt inside the edges.
+  /// contracts/fixtures/back-swipe-geometry.json holds both sides to the same table.
+  static let backSwipeDurationMs = 100.0
+
+  static func backSwipeEndpoints(in surface: CGRect) -> (start: CGPoint, end: CGPoint) {
+    func axis(_ size: CGFloat, percent: CGFloat) -> CGFloat {
+      let margin: CGFloat = 8
+      let upper = max(margin, (size - margin).rounded())
+      return min(upper, max(margin, (size * percent / 100).rounded(.towardZero)))
+    }
+    let y = surface.minY + axis(surface.height, percent: 50)
+    return (
+      CGPoint(x: surface.minX + axis(surface.width, percent: 1), y: y),
+      CGPoint(x: surface.minX + axis(surface.width, percent: 85), y: y)
+    )
   }
 
   /// The three answers a before/after visual comparison can give. `unobserved` carries the typed
@@ -48,7 +71,7 @@ extension RunnerTests {
 #elseif os(tvOS)
     _ = pressTvRemote(.menu)
     return .performed
-#else
+#elseif os(iOS)
     guard let context = try synthesizedCoordinateContext(app: app) else {
       return .refused(Self.backScreenRefusal(.unresolvedWindow))
     }
@@ -77,6 +100,15 @@ extension RunnerTests {
     )
     NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)
     return Self.backSwipeOutcome(observation: observation)
+#else
+    // visionOS has no edge swipe that pops a navigation stack.
+    return .refused(
+      ErrorPayload(
+        code: RunnerWireErrorCode.backSwipeNotDispatched,
+        message: "back has no gesture on this platform, so nothing was sent.",
+        hint: "Press the visible back control by its ref."
+      )
+    )
 #endif
   }
 
@@ -88,8 +120,13 @@ extension RunnerTests {
       return nil
     case .notSent(let message, let hint):
       return .refused(ErrorPayload(code: RunnerWireErrorCode.backSwipeNotDispatched, message: message, hint: hint))
-    case .interrupted(let message, let hint):
-      return .unconfirmed(ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint))
+    case .interrupted(let message, _):
+      return .unconfirmed(
+        backSwipeUnverified(
+          because: "it was cut short after it touched down (\(message))",
+          hint: "Check the screen with snapshot before you retry; the swipe may already have navigated."
+        )
+      )
     }
   }
 #endif
@@ -103,27 +140,28 @@ extension RunnerTests {
     )
   }
 
-  /// Samples until two frames a verification delay apart agree, so a screen still changing on its
-  /// own, such as one still rendering after a launch, is not read as the swipe's effect. `settled`
-  /// is false when the samples ran out first.
+  /// Samples a verification delay apart until `backSwipeStableSamples` in a row agree with the
+  /// first of them. `settled` is false when the budget ran out first.
   private func settledBackVisualState(
     app: XCUIApplication,
     context: SynthesizedCoordinateContext
   ) -> Result<(sample: Data, settled: Bool), RunnerAppScreenCaptureFailure> {
-    var previous: Data
-    switch captureBackVisualState(app: app, context: context) {
-    case .success(let sample): previous = sample
-    case .failure(let refusal): return .failure(refusal)
-    }
-    for _ in 0..<Self.backSwipeSettleSamples {
-      sleepFor(Self.backSwipeVerificationDelay)
+    var stableRun: [Data] = []
+    for index in 0..<Self.backSwipeSettleSampleBudget {
+      if index > 0 { sleepFor(Self.backSwipeVerificationDelay) }
       switch captureBackVisualState(app: app, context: context) {
-      case .success(let next) where !Self.visualSamplesDiffer(next, previous): return .success((next, true))
-      case .success(let next): previous = next
-      case .failure(let refusal): return .failure(refusal)
+      case .failure(let refusal):
+        return .failure(refusal)
+      case .success(let sample):
+        if let first = stableRun.first, Self.visualSamplesDiffer(first, sample) {
+          stableRun = [sample]
+        } else {
+          stableRun.append(sample)
+        }
+        if stableRun.count >= Self.backSwipeStableSamples { return .success((sample, true)) }
       }
     }
-    return .success((previous, false))
+    return .success((stableRun[stableRun.count - 1], false))
   }
 
   /// The frame the swipe compares, as a coarse grayscale grid when the display answered and the
@@ -139,7 +177,11 @@ extension RunnerTests {
       from: context.resolvedWindow == nil && requestLitPanel == nil
         ? captureSoleAppScreen(app: app)
         : captureResolvedAppScreen(app: app, litPanel: requestLitPanel),
-      encoding: { runnerCGImage(from: $0.image).flatMap(Self.visualGrid) }
+      encoding: { screen in
+        // The status bar changes on its own (the clock, signal, a recording indicator).
+        let statusBar = screenTopSafeAreaInset() * CGFloat(screen.pixelsPerPoint)
+        return runnerCGImage(from: screen.image).flatMap { Self.visualGrid(of: $0, excludingTop: statusBar) }
+      }
     )
 #else
     return .failure(.unresolvedScreen)
@@ -163,9 +205,26 @@ extension RunnerTests {
   static let visualCellTolerance = 24
   static let visualChangedCellFraction = 0.01
 
-  /// The screen drawn into a small grayscale grid. A back navigation redraws most of it, while a
-  /// spinner, a clock tick, or a material shimmer moves few cells or moves them by little.
-  static func visualGrid(of image: CGImage) -> Data? {
+#if os(iOS)
+  /// The screen's top inset, read from the runner's own window scenes: the status-bar band is a
+  /// screen-level fact, so the runner's full-screen host window reports the one the app sees.
+  private func screenTopSafeAreaInset() -> CGFloat {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .map(\.safeAreaInsets.top)
+      .max() ?? 0
+  }
+#endif
+
+  /// The screen below its top `excludingTop` pixels, drawn into a small grayscale grid. A back
+  /// navigation redraws most of it, while a spinner, a caret, or a material shimmer moves few
+  /// cells or moves them by little.
+  static func visualGrid(of fullImage: CGImage, excludingTop topPixels: CGFloat = 0) -> Data? {
+    let top = min(max(topPixels, 0), CGFloat(fullImage.height - 1))
+    guard let image = fullImage.cropping(
+      to: CGRect(x: 0, y: top, width: CGFloat(fullImage.width), height: CGFloat(fullImage.height) - top)
+    ) else { return nil }
     let (width, height) = visualGridSize
     var cells = [UInt8](repeating: 0, count: width * height)
     let drawn = cells.withUnsafeMutableBytes { buffer -> Bool in
