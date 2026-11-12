@@ -2,23 +2,20 @@ import AgentDeviceSnapshotPresentation
 import XCTest
 
 extension RunnerTests {
-  static let navigationBackKeywords = ["back", "close", "cancel"]
-  static let systemBackButtonIdentifier = "BackButton"
-  static let floatingBarBackControlMaxYFraction: CGFloat = 0.4
-  static let navigationFallbackVerificationDelay: TimeInterval = 0.25
+  static let backSwipeVerificationDelay: TimeInterval = 0.25
+  static let backSwipeSettleSamples = 4
 
-  /// What one in-app `back` attempt concluded. `.unverified` carries the typed capture failure the
-  /// display refused with, so a visual check that could not run reports an unknown instead of the
-  /// false "no back control exists".
+  /// What one `back` concluded. `.refused` dispatched nothing. `.unconfirmed` ran the back gesture,
+  /// or may have, without proof that it navigated back.
   enum InAppBackOutcome {
     case performed
-    case unavailable
-    case unverified(ErrorPayload)
+    case refused(ErrorPayload)
+    case unconfirmed(ErrorPayload)
   }
 
   /// The three answers a before/after visual comparison can give. `unobserved` carries the typed
   /// refusal that made the pair uncomparable: a display that refuses to be sampled proves nothing
-  /// either way, and reading it as "unchanged" would claim a back control is absent.
+  /// either way, and reading it as "unchanged" would claim the swipe did nothing.
   enum NavigationVisualObservation: Equatable {
     case changed
     case unchanged
@@ -33,226 +30,93 @@ extension RunnerTests {
     }
   }
 
+  /// iOS `back` is the left-edge back swipe, verified by a change of the app's screen. A visible
+  /// back control is the caller's to press by ref; the runner does not guess at buttons.
   @MainActor
-  func tapInAppBackControl(app: XCUIApplication) throws -> InAppBackOutcome {
+  func performInAppBack(app: XCUIApplication) throws -> InAppBackOutcome {
 #if os(macOS)
-    if let back = macOSNavigationBackElement(app: app) {
-      try tapElementCenter(app: app, element: back)
-      return .performed
+    guard let back = macOSNavigationBackElement(app: app) else {
+      return .refused(ErrorPayload(message: "in-app back control is not available"))
     }
-    return .unavailable
+    let frame = back.frame
+    if frame.isEmpty {
+      back.tap()
+    } else {
+      _ = try tapAt(app: app, x: frame.midX, y: frame.midY)
+    }
+    return .performed
 #elseif os(tvOS)
     _ = pressTvRemote(.menu)
     return .performed
 #else
-    let rejectedQueriesBefore = navigationRejectedQueryCount()
-    let buttons = try elementQueries(app: app, matching: .navigationBar)
-      .flatMap { $0.buttons.allElementsBoundByIndex }
-    if let back = buttons.first(where: { $0.isHittable }) {
-      // `isHittable` promises a hittable point, not a hittable center: a bar button partly under an
-      // overlay keeps the element tap, which aims at the point XCTest computed.
-      back.tap()
-      return .performed
+    guard let context = try synthesizedCoordinateContext(app: app) else {
+      return .refused(Self.backScreenRefusal(.unresolvedWindow))
     }
-    if navigationRejectedQueryCount() != rejectedQueriesBefore
-      || isSnapshotXCTestChannelPenalized(bundleId: mainOwned.bundleId)
-    {
-      NSLog("AGENT_DEVICE_RUNNER_IN_APP_BACK_SKIPPED_XCTEST_ENUMERATION bundle=%@", mainOwned.bundleId ?? "")
-    } else if let frame = try topNavigationBackFrame(app: app) {
-      return try tapResolvedNavigationBackControl(app: app, frame: frame)
+    let before: (sample: Data, settled: Bool)
+    switch settledBackVisualState(app: app, context: context) {
+    case .success(let settled): before = settled
+    case .failure(let refusal): return .refused(Self.backScreenRefusal(refusal))
     }
-    return try tapTopLeadingNavigationFallback(
+    if case .unsupported(let message, let hint) = try performBackGesture(
       app: app,
-      windowQueryRejected: navigationRejectedQueryCount() != rejectedQueriesBefore
+      surface: context.geometry.windowOnScreen.rect
+    ) {
+      return .unconfirmed(ErrorPayload(code: "UNSUPPORTED_OPERATION", message: message, hint: hint))
+    }
+    guard before.settled else {
+      return .unconfirmed(
+        Self.backSwipeUnverified(
+          because: "the app's screen was already changing on its own",
+          hint: "Take a snapshot to see where the app is."
+        )
+      )
+    }
+    sleepFor(Self.backSwipeVerificationDelay)
+    let observation = Self.navigationVisualObservation(
+      before: .success(before.sample),
+      after: captureBackVisualState(app: app, context: context)
     )
+    NSLog("AGENT_DEVICE_RUNNER_BACK_SWIPE_VERIFICATION changed=%@", observation.logToken)
+    return Self.backSwipeOutcome(observation: observation)
 #endif
   }
 
-  private func tapElementCenter(app: XCUIApplication, element: XCUIElement) throws {
-    let frame = element.frame
-    if !frame.isEmpty {
-      _ = try tapAt(app: app, x: frame.midX, y: frame.midY)
-      return
-    }
-#if !os(tvOS)
-    element.tap()
-#endif
+  /// No screen to compare means no proof either way, so the swipe is not sent.
+  static func backScreenRefusal(_ refusal: RunnerAppScreenCaptureFailure) -> ErrorPayload {
+    ErrorPayload(
+      code: refusal.rawValue,
+      message: "back did not swipe: the app's screen could not be sampled to verify it.",
+      hint: refusal.hint
+    )
   }
 
-  @MainActor
-  private func tapResolvedNavigationBackControl(app: XCUIApplication, frame: CGRect) throws -> InAppBackOutcome {
-    guard SnapshotGeometry.isPositiveFinite(frame) else { return .unavailable }
-    let context = try synthesizedCoordinateContext(app: app)
-    guard try dispatchNavigationTap(app: app, point: CGPoint(x: frame.midX, y: frame.midY), context: context) else {
-      return .unavailable
-    }
-    return .performed
-  }
-
-  /// Dispatches one navigation back tap: the synthesized gesture route first, the XCTest coordinate
-  /// tap where the gesture policy allows it. True once a tap was dispatched.
-  @MainActor
-  private func dispatchNavigationTap(
+  /// Samples until two frames a verification delay apart agree, so a screen still changing on its
+  /// own, such as one still rendering after a launch, is not read as the swipe's effect. `settled`
+  /// is false when the samples ran out first.
+  private func settledBackVisualState(
     app: XCUIApplication,
-    point: CGPoint,
-    context: SynthesizedCoordinateContext?
-  ) throws -> Bool {
-    switch try performSynthesizedGesture(app, kind: .coordinateTap, context: context, synthesize: {
-      try synthesizedTapAt(app: app, x: point.x, y: point.y, context: context)
-    }) {
-    case .performed:
-      return true
-    case .refused:
-      return false
-    case .xctestFallback:
-      let fallback = try performGesture(app) {
-        try tapAt(app: app, x: point.x, y: point.y)
+    context: SynthesizedCoordinateContext
+  ) -> Result<(sample: Data, settled: Bool), RunnerAppScreenCaptureFailure> {
+    var previous: Data
+    switch captureBackVisualState(app: app, context: context) {
+    case .success(let sample): previous = sample
+    case .failure(let refusal): return .failure(refusal)
+    }
+    for _ in 0..<Self.backSwipeSettleSamples {
+      sleepFor(Self.backSwipeVerificationDelay)
+      switch captureBackVisualState(app: app, context: context) {
+      case .success(let next) where next == previous: return .success((next, true))
+      case .success(let next): previous = next
+      case .failure(let refusal): return .failure(refusal)
       }
-      if case .performed = fallback.outcome { return true }
-      return false
     }
+    return .success((previous, false))
   }
 
-  private func topNavigationBackFrame(app: XCUIApplication) throws -> CGRect? {
-#if os(iOS)
-    let window = try onScreenWindowFrame(app: app)
-    let candidates = try elementQueries(app: app, matching: .button).flatMap {
-      $0.matching(Self.navigationBackPredicate()).allElementsBoundByIndex
-    }.compactMap {
-      element -> (frame: CGRect, rank: Int)? in
-      guard element.exists, element.isHittable else { return nil }
-      let frame = element.frame
-      let identifier = element.identifier
-      guard Self.isTopNavigationBackCandidateFrame(frame, in: window, identifier: identifier)
-      else { return nil }
-      guard let rank = Self.navigationBackControlRank(label: element.label, identifier: identifier)
-      else { return nil }
-      return (frame, rank)
-    }
-    return candidates.sorted { lhs, rhs in
-      if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
-      if lhs.frame.minY != rhs.frame.minY { return lhs.frame.minY < rhs.frame.minY }
-      return lhs.frame.minX < rhs.frame.minX
-    }.first?.frame
-#else
-    return nil
-#endif
-  }
-
-  static func navigationBackPredicate() -> NSPredicate {
-    let clauses = navigationBackKeywords.flatMap { _ in
-      ["label CONTAINS[c] %@", "identifier CONTAINS[c] %@"]
-    }.joined(separator: " OR ")
-    let arguments = navigationBackKeywords.flatMap { [$0, $0] }
-    return NSPredicate(format: clauses, argumentArray: arguments)
-  }
-
-  static func navigationBackControlRank(label: String, identifier: String) -> Int? {
-    let text = "\(label) \(identifier)".lowercased()
-    return navigationBackKeywords.firstIndex { text.contains($0) }
-  }
-
-  static func isTopNavigationControlFrame(_ candidate: CGRect, in window: CGRect) -> Bool {
-    guard SnapshotGeometry.isPositiveFinite(candidate), SnapshotGeometry.isPositiveFinite(window)
-    else {
-      return false
-    }
-    // Accept the compact navigation/search header band without matching deep content controls.
-    let maxY = window.minY + min(max(window.height * 0.22, 96), 180)
-    return candidate.midY >= window.minY && candidate.midY <= maxY
-  }
-
-  /// UIKit names the system back control `BackButton`. That identity is the evidence that lets it sit
-  /// below the classic header band, where the iOS 27 floating toolbar places it (#3333); keyword-only
-  /// matches stay inside the band so content controls that merely say "back" are not tapped.
-  static func isTopNavigationBackCandidateFrame(
-    _ candidate: CGRect,
-    in window: CGRect,
-    identifier: String
-  ) -> Bool {
-    if isTopNavigationControlFrame(candidate, in: window) { return true }
-    guard identifier == systemBackButtonIdentifier,
-      SnapshotGeometry.isPositiveFinite(candidate), SnapshotGeometry.isPositiveFinite(window)
-    else {
-      return false
-    }
-    let maxY = window.minY + window.height * floatingBarBackControlMaxYFraction
-    return candidate.midY >= window.minY && candidate.midY <= maxY
-  }
-
-  /// The point the top-leading `back` fallback aims at: the leading slot of the bar that sits
-  /// directly under the top inset of the frame the tap lands in. A fraction of the frame height
-  /// cannot serve both families — an iPhone 17 Pro measures a 59-pt inset with its bar at y 62-116,
-  /// while an iPad Pro 11" measures 32 with its bar at y 32-86, where the iPhone's height-derived 96
-  /// lands below the bar. `22` is half of UIKit's standard 44-pt top bar. The bounds keep a runtime
-  /// that reports no inset inside a plausible bar, and a large inset from leaving it.
-  static func topLeadingNavigationFallbackPoint(
-    in frame: CGRect,
-    topSafeAreaInset: CGFloat
-  ) -> CGPoint? {
-    guard SnapshotGeometry.isPositiveFinite(frame) else {
-      return nil
-    }
-    // Aim at the standard leading navigation slot, bounded for compact and tablet widths.
-    let xOffset = min(max(frame.width * 0.08, 28), 44)
-    let yOffset = min(max(topSafeAreaInset + 22, 56), 96)
-    return CGPoint(x: frame.minX + xOffset, y: frame.minY + yOffset)
-  }
-
-  /// The screen's top inset, read in-process from the runner's own window scene. The status-bar /
-  /// Dynamic Island band is a screen-level fact, so the runner's full-screen host window reports the
-  /// one the target app sees — and unlike any element frame it answers on a tree XCTest cannot
-  /// serialize. The largest top inset among the scene's windows wins: an alert or keyboard window
-  /// reports none, and the window that carries the band is the one to ask.
-  private func screenTopSafeAreaInset() -> CGFloat {
-    #if os(iOS)
-      let insets = UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .flatMap(\.windows)
-        .map(\.safeAreaInsets.top)
-      let inset = insets.max() ?? 0
-      NSLog("AGENT_DEVICE_RUNNER_BACK_FALLBACK_TOP_INSET read=%.1f windows=%zd", inset, insets.count)
-      return inset
-    #else
-      return 0
-    #endif
-  }
-
-  @MainActor
-  private func tapTopLeadingNavigationFallback(
-    app: XCUIApplication,
-    windowQueryRejected: Bool
-  ) throws -> InAppBackOutcome {
-#if os(iOS)
-    guard let context = try synthesizedCoordinateContext(
-      app: app,
-      windowQueryRejected: windowQueryRejected
-    ), let point = Self.topLeadingNavigationFallbackPoint(
-      in: context.geometry.windowOnScreen.rect,
-      topSafeAreaInset: screenTopSafeAreaInset()
-    ) else {
-      return .unavailable
-    }
-    let before = captureNavigationFallbackVisualState(app: app, context: context)
-    guard try dispatchNavigationTap(app: app, point: point, context: context) else {
-      return .unavailable
-    }
-    return verifyNavigationFallbackOutcome(app: app, before: before, context: context)
-#else
-    return .unavailable
-#endif
-  }
-
-  private func navigationRejectedQueryCount() -> Int {
-    suppressedIssueLock.lock()
-    defer { suppressedIssueLock.unlock() }
-    return suppressedAxSnapshotIssueCount
-  }
-
-  /// The frame the fallback compares, encoded when the display answered and the typed refusal
+  /// The frame the swipe compares, encoded when the display answered and the typed refusal
   /// otherwise. It samples the app's own screen only: a system-surface capture reads as "unchanged"
-  /// across a before/after pair and launders a wrong-process frame into a false "no back control".
-  private func captureNavigationFallbackVisualState(
+  /// across a before/after pair and launders a wrong-process frame into a false refusal.
+  private func captureBackVisualState(
     app: XCUIApplication,
     context: SynthesizedCoordinateContext
   ) -> Result<Data, RunnerAppScreenCaptureFailure> {
@@ -282,45 +146,33 @@ extension RunnerTests {
     }
   }
 
-  private func verifyNavigationFallbackOutcome(
-    app: XCUIApplication,
-    before: Result<Data, RunnerAppScreenCaptureFailure>,
-    context: SynthesizedCoordinateContext
-  ) -> InAppBackOutcome {
-    sleepFor(Self.navigationFallbackVerificationDelay)
-    let after = captureNavigationFallbackVisualState(app: app, context: context)
-    let observation = Self.navigationVisualObservation(before: before, after: after)
-    // The sample sizes and the observation name together tell a refused capture apart from an
-    // unchanged screen, and the fallback is rare enough that saying so every time costs nothing.
-    NSLog(
-      "AGENT_DEVICE_RUNNER_IN_APP_BACK_VISUAL_VERIFICATION beforeBytes=%ld afterBytes=%ld changed=%@",
-      (try? before.get()).map(\.count) ?? -1,
-      (try? after.get()).map(\.count) ?? -1,
-      observation.logToken
-    )
-    return Self.inAppBackOutcome(observation: observation)
-  }
-
-  /// What an observation of the fallback's before/after samples concludes. Kept apart from the sleep
+  /// What an observation of the swipe's before/after samples concludes. Kept apart from the sleep
   /// and the capture so the three-way decision is testable without a running app.
-  static func inAppBackOutcome(observation: NavigationVisualObservation) -> InAppBackOutcome {
+  static func backSwipeOutcome(observation: NavigationVisualObservation) -> InAppBackOutcome {
     switch observation {
     case .changed:
       return .performed
     case .unchanged:
-      return .unavailable
-    case .unobserved(let refusal):
-      // No sample is not evidence of no navigation change: the fallback ran, so report the display
-      // refusal it hit rather than laundering an unobservable result into "back is not available".
-      return .unverified(
+      return .unconfirmed(
         ErrorPayload(
-          code: refusal.rawValue,
-          message:
-            "The in-app back fallback was dispatched, but no display could be sampled to confirm the result. This is an unknown outcome, not evidence that a back control is absent.",
-          hint: refusal.hint
+          code: RunnerWireErrorCode.backSwipeNoChange,
+          message: "The back swipe changed nothing.",
+          hint: "Press the visible back or close control by its ref from a fresh snapshot."
         )
       )
+    case .unobserved(let refusal):
+      return .unconfirmed(
+        backSwipeUnverified(because: "the app's screen could not be sampled afterwards", hint: refusal.hint)
+      )
     }
+  }
+
+  static func backSwipeUnverified(because reason: String, hint: String?) -> ErrorPayload {
+    ErrorPayload(
+      code: RunnerWireErrorCode.backSwipeUnverified,
+      message: "The back swipe ran, but \(reason). This is an unknown outcome.",
+      hint: hint
+    )
   }
 
   static func navigationVisualObservation(
@@ -330,8 +182,7 @@ extension RunnerTests {
     switch (before, after) {
     case (.success(let before), .success(let after)):
       return before != after ? .changed : .unchanged
-    // The refusal the fallback most recently hit names the unknown, so the code names the last thing
-    // it looked at before giving up. An uncomparable pair always carries one.
+    // The refusal most recently hit names the unknown. An uncomparable pair always carries one.
     case (_, .failure(let refusal)):
       return .unobserved(refusal: refusal)
     case (.failure(let refusal), _):

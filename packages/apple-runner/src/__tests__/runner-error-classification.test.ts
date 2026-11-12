@@ -137,6 +137,19 @@ test('a coordinate fill refused on an unreadable point reports its own code, not
   assert.equal(isRetryableRunnerError(new AppError(refusal.code, '', refusal.details)), false);
 });
 
+// The literals are what the Swift runner encodes. A back swipe that ran keeps an unknown dispatch
+// whether the screen stayed the same or could not be sampled; only the reason tells them apart.
+test('a back swipe that proved nothing stays COMMAND_FAILED, unknown, with its own reason', () => {
+  const unchanged = classifyRunnerReportedError('BACK_SWIPE_NO_CHANGE');
+  assert.equal(unchanged.code, 'COMMAND_FAILED');
+  assert.equal(unchanged.details.reason, 'back_swipe_no_change');
+  assert.equal(unchanged.details.dispatched, 'unknown');
+  const unverified = classifyRunnerReportedError('BACK_SWIPE_UNVERIFIED');
+  assert.equal(unverified.code, 'COMMAND_FAILED');
+  assert.equal(unverified.details.reason, 'back_swipe_unverified');
+  assert.equal(unverified.details.dispatched, 'unknown');
+});
+
 test('retryable requires an AppError with COMMAND_FAILED', () => {
   assert.equal(isRetryableRunnerError(new Error('fetch failed')), false);
   assert.equal(isRetryableRunnerError(new AppError('DEVICE_NOT_FOUND', 'fetch failed')), false);

@@ -43,6 +43,7 @@ static UIAlertController *RunnerAlertDeclineChoiceFixture(BOOL affirmativeOnly, 
 // Held for the app's lifetime: a window nobody retained would be gone before the test queried it.
 @property(nonatomic, strong) UIWindow *secondWindow;
 @property(nonatomic, strong) UILabel *navigationBackStatus;
+@property(nonatomic, strong) NSTimer *animationTimer;
 @property(nonatomic, strong) UILabel *maskedToggleStatus;
 @property(nonatomic, strong) UILabel *maskedDeliveryStatus;
 @property(nonatomic, strong) UILabel *maskedTextLengthStatus;
@@ -544,8 +545,10 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
       [NSString stringWithFormat:@"presses=%lu", (unsigned long)self.maskedTogglePresses];
 }
 
-- (void)navigationBackPressed {
-  self.navigationBackStatus.text = @"Back performed";
+- (void)navigationBackSwiped:(UIScreenEdgePanGestureRecognizer *)recognizer {
+  if (recognizer.state == UIGestureRecognizerStateEnded) {
+    self.navigationBackStatus.text = @"Back performed";
+  }
 }
 
 - (void)agentDeviceWillAttachToWindow:(UIWindow *)window {
@@ -569,34 +572,21 @@ static const CGFloat AgentDeviceTextEntryNeighbourGap = 16;
 
   UILabel *label = self.label;
 
-  // Keep the fixture behind a launch argument so normal runner snapshots remain unchanged.
+  // Keep the fixture behind a launch argument so normal runner snapshots remain unchanged. A
+  // left-edge pan stands in for UIKit's interactive pop: it begins only for an edge-masked touch.
   if ([NSProcessInfo.processInfo.arguments containsObject:@"--agent-device-back-regression"]) {
     self.navigationBackStatus = label;
     label.accessibilityIdentifier = @"agent-device-back-status";
-    if ([NSProcessInfo.processInfo.arguments containsObject:@"--navigation-bar"]) {
-      UINavigationBar *bar = [[UINavigationBar alloc] initWithFrame:CGRectMake(0, 62, self.view.bounds.size.width, 44)];
-      UINavigationItem *item = [[UINavigationItem alloc] initWithTitle:@"Thread"];
-      item.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Go back" style:UIBarButtonItemStylePlain target:self action:@selector(navigationBackPressed)];
-      bar.items = @[item];
-      [self.view addSubview:bar];
-    } else {
-      // The control must sit under the point the runner's top-leading fallback aims at, whose
-      // bounds are known: x lands at most 44 from the frame's leading edge, y at
-      // clamp(safeTopInset + 22, 56, 96). Anchoring to the view's leading (not the safe-area's)
-      // keeps the button under x=44 on a landscape iPhone, where the side inset would otherwise
-      // start a safe-area anchor past it; the safe-area top plus 12 with a 64-pt height spans the
-      // whole clamped y range for every inset an iPhone or iPad reports.
-      UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-      back.translatesAutoresizingMaskIntoConstraints = NO;
-      [back setTitle:@"Go back" forState:UIControlStateNormal];
-      [back addTarget:self action:@selector(navigationBackPressed) forControlEvents:UIControlEventTouchUpInside];
-      [self.view addSubview:back];
-      [NSLayoutConstraint activateConstraints:@[
-        [back.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
-        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:12],
-        [back.widthAnchor constraintEqualToConstant:88],
-        [back.heightAnchor constraintEqualToConstant:64],
-      ]];
+    UIScreenEdgePanGestureRecognizer *edgePan =
+        [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(navigationBackSwiped:)];
+    edgePan.edges = UIRectEdgeLeft;
+    [self.view addGestureRecognizer:edgePan];
+    // `--animating` keeps the screen changing on its own, as a spinner or a launch still rendering.
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--animating"]) {
+      __block NSUInteger tick = 0;
+      self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
+        label.text = [NSString stringWithFormat:@"tick %lu", (unsigned long)++tick];
+      }];
     }
   }
 

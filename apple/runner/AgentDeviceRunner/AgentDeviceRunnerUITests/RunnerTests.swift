@@ -40,6 +40,8 @@ final class RunnerTests: XCTestCase {
   /// discloses dispatched: no.
   /// `ALERT_UNRESOLVED` means required alert acquisition failed or exhausted its deadline.
   /// It establishes no absence and activates nothing, so dispatched: no.
+  /// `BACK_SWIPE_NO_CHANGE` is a back swipe that left the app's screen unchanged, and
+  /// `BACK_SWIPE_UNVERIFIED` one whose screen could not be sampled afterwards. Both ran the swipe.
   enum RunnerWireErrorCode {
     static let mainThreadTimeout = "MAIN_THREAD_TIMEOUT"
     static let appNotRunning = "APP_NOT_RUNNING"
@@ -47,6 +49,8 @@ final class RunnerTests: XCTestCase {
     static let textInputProbeUnavailable = "TEXT_INPUT_PROBE_UNAVAILABLE"
     static let alertButtonNotFound = "ALERT_BUTTON_NOT_FOUND"
     static let alertUnresolved = "ALERT_UNRESOLVED"
+    static let backSwipeNoChange = "BACK_SWIPE_NO_CHANGE"
+    static let backSwipeUnverified = "BACK_SWIPE_UNVERIFIED"
     /// Refuses a repeat of a `commandId` the runner already finished, when that command's own
     /// classification keeps no response body to replay. Nothing ran for the repeat, but the daemon's
     /// dispatch disclosure stays `unknown` — only the runner knows whether an earlier send of that id

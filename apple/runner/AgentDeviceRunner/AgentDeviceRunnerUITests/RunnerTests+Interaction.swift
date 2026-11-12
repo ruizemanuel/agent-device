@@ -90,33 +90,23 @@ extension RunnerTests {
     let usedNonHittableFallback: Bool
   }
 
-  func performBackGesture(app: XCUIApplication) throws {
-    if pressTvRemote(.menu) {
-      return
-    }
-    try performCoordinateBackGesture(app: app)
-  }
-
-  private func performCoordinateBackGesture(app: XCUIApplication) throws {
-#if !os(tvOS)
+#if os(iOS)
+  /// The left-edge back swipe across `surface`. A simulator sends it as one edge-masked touch,
+  /// because UIKit's interactive pop ignores an XCTest drag that lacks the mask; a device has no
+  /// such touch and takes the XCTest drag.
+  @MainActor
+  func performBackGesture(app: XCUIApplication, surface: CGRect) throws -> RunnerInteractionOutcome {
+#if targetEnvironment(simulator)
+    return try screenEdgeBackSwipe(app: app, surface: surface)
+#else
     let target = try normalizedOffsetAnchor(app: app)
     let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5))
     let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
     start.press(forDuration: 0.05, thenDragTo: end)
+    return .performed
 #endif
   }
-
-  func performSystemBackAction(app: XCUIApplication) throws -> Bool {
-#if os(macOS)
-    return false
-#else
-    if pressTvRemote(.menu) {
-      return true
-    }
-    try performBackGesture(app: app)
-    return true
 #endif
-  }
 
   func performAppSwitcherGesture(app: XCUIApplication) throws {
     if pressTvRemote(.home) {

@@ -36,6 +36,34 @@ extension RunnerTests {
     return .performed
   }
 
+  /// The left-edge back swipe as the `right-edge` gesture preset plans it: from 8 pt inside the
+  /// leading edge to 85% of the width at mid-height, in 100 ms.
+  @MainActor
+  func screenEdgeBackSwipe(app: XCUIApplication, surface: CGRect) throws -> RunnerInteractionOutcome {
+    let y = Double(surface.midY)
+    let samples = [
+      RunnerGestureSample(offsetMs: 0, point: RunnerGesturePoint(x: Double(surface.minX + 8), y: y)),
+      RunnerGestureSample(
+        offsetMs: 100,
+        point: RunnerGesturePoint(x: Double(surface.minX + surface.width * 0.85), y: y)
+      ),
+    ]
+    return try screenEdgePlannedGesture(app: app, plan: RunnerGesturePlan(
+      topology: "single",
+      intent: "fling",
+      executionProfile: "endpoint-hold",
+      contactOrigin: runnerScreenEdgeContactOrigin,
+      durationMs: 100,
+      viewport: RunnerGestureViewport(
+        x: Double(surface.minX),
+        y: Double(surface.minY),
+        width: Double(surface.width),
+        height: Double(surface.height)
+      ),
+      pointers: [RunnerGesturePointer(pointerId: 0, samples: samples)]
+    ))
+  }
+
   /// The portrait size of the display that hosts the app: the request's lit panel on a foldable,
   /// whose sides swap with the window's turn, else the sole screen.
   @MainActor

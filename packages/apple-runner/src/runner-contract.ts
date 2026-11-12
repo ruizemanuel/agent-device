@@ -92,7 +92,6 @@ export type RunnerCommand = {
     | 'snapshot'
     | 'screenshot'
     | 'backInApp'
-    | 'backSystem'
     | 'home'
     | 'rotate'
     | 'gesture'
@@ -334,6 +333,13 @@ export const NO_TEXT_INPUT_AT_POINT_RUNNER_CODE = 'NO_TEXT_INPUT_AT_POINT';
 export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAILABLE';
 
 /**
+ * The runner codes for an iOS `back` swipe that ran without proving a navigation: the app's screen
+ * stayed the same, or could not be sampled afterwards. The swipe was sent, so both stay `unknown`.
+ */
+const BACK_SWIPE_NO_CHANGE_RUNNER_CODE = 'BACK_SWIPE_NO_CHANGE';
+const BACK_SWIPE_UNVERIFIED_RUNNER_CODE = 'BACK_SWIPE_UNVERIFIED';
+
+/**
  * Runner codes that classify a failure for the host without renaming it on the wire. They stay
  * `COMMAND_FAILED` and survive as `details.runnerErrorCode`, which is what family policy reads:
  * `RUNNER_BUSY` for retriable contention, `ALERT_NOT_FOUND` for an alert that is not there yet,
@@ -346,6 +352,8 @@ const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlyMap<string, { retriable?: true
   [APP_NOT_RUNNING_RUNNER_CODE, { retriable: true }],
   [ALERT_NOT_FOUND_RUNNER_CODE, {}],
   [SCROLL_KEYBOARD_OCCLUDES_SURFACE_RUNNER_CODE, {}],
+  [BACK_SWIPE_NO_CHANGE_RUNNER_CODE, {}],
+  [BACK_SWIPE_UNVERIFIED_RUNNER_CODE, {}],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, {}] as const),
 ]);
 
@@ -359,6 +367,8 @@ const RUNNER_REPORTED_ERROR_REASONS: ReadonlyMap<string, RunnerReportedErrorReas
   [MAIN_THREAD_TIMEOUT_RUNNER_CODE, 'runner_main_thread_timeout'],
   [NO_TEXT_INPUT_AT_POINT_RUNNER_CODE, 'no_text_input_at_point'],
   [TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE, 'text_input_probe_unavailable'],
+  [BACK_SWIPE_NO_CHANGE_RUNNER_CODE, 'back_swipe_no_change'],
+  [BACK_SWIPE_UNVERIFIED_RUNNER_CODE, 'back_swipe_unverified'],
 ]);
 
 /**
@@ -394,7 +404,9 @@ type RunnerReportedErrorReason =
   | 'runner_busy'
   | 'runner_main_thread_timeout'
   | 'no_text_input_at_point'
-  | 'text_input_probe_unavailable';
+  | 'text_input_probe_unavailable'
+  | 'back_swipe_no_change'
+  | 'back_swipe_unverified';
 
 /** Wire code plus the details every path must publish for one runner-reported error code. */
 export type RunnerReportedErrorClass = Readonly<{

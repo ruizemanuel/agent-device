@@ -123,9 +123,10 @@ iOS Simulator launch behavior:
 
 Back, orientation, and hardware buttons:
 
-- `back` uses app-owned back navigation: visible in-app back UI on Apple targets, and the back keyevent on Android. `--in-app` names this default explicitly.
-- On iOS, a single-screen iPhone or an iPad whose app provably fills its screen, `back` can use a top-leading tap when the app tree is unreadable. It compares the screen before and after the tap. If the screen cannot be captured, the command reports an unknown outcome; inspect the screen before you retry.
-- `back --system` sends system back input: the Android back keyevent, the iOS back gesture, or the tvOS Siri Remote Menu button. macOS has no system back, so it reports unavailable.
+- `back` uses app-owned back navigation: the back keyevent on Android, the visible back control on macOS, and the Siri Remote Menu button on tvOS. `--in-app` names this default explicitly.
+- On iOS, `back` is the left-edge back swipe, with or without `--in-app` or `--system`. It succeeds only when the app's screen changes. An unchanged screen refuses with `reason: back_swipe_no_change`. It waits up to about a second for the screen to stop changing before it swipes. If the screen keeps changing on its own, or cannot be sampled after the swipe, the result is an unknown outcome (`back_swipe_unverified`). If the screen cannot be sampled before the swipe, `back` does not swipe.
+- An app with a left-edge drawer may open the drawer instead of going back. When a back or close control is visible, press it by its ref.
+- `back --system` sends system back input: the Android back keyevent, the iOS back swipe, or the tvOS Siri Remote Menu button. macOS has no system back, so it refuses before dispatch.
 - `orientation portrait|portrait-upside-down|landscape-left|landscape-right` works on iOS and Android mobile targets only. On ADB-backed Android it turns auto-rotate off, and the lock persists after the session ends until something turns it back on. A foldable iPhone simulator (iPhone Duo) refuses `portrait-upside-down`, and refuses every rotation in a scoped simulator set (`--ios-simulator-device-set`).
 - `orientation auto` hands rotation back to the sensor on ADB-backed Android, local or Limrun (`accelerometer_rotation=1`, `user_rotation` untouched), and reports `orientation: "auto"`. It does not wait for the display to rotate, because there is no target rotation: the sensor decides, and an emulator usually settles on portrait. Every other backend refuses `auto` with `UNSUPPORTED_OPERATION`.
 - `action-button` presses the iPhone or iPad Action Button once. It takes no arguments, no hold duration, and no `--settle`, and it doesn't activate the session app or drive Camera Control. Other platforms refuse it, and a model without the button (an iPhone SE, most iPad simulators) fails with `UNSUPPORTED_OPERATION`.
@@ -163,8 +164,7 @@ Remote daemons and tenants:
 ```bash
 agent-device open "https://example.com" --platform ios           # open link in web browser
 agent-device open MyApp "myapp://screen/to" --platform ios       # open deep link to MyApp
-agent-device back --platform ios                                 # tap visible app back UI only
-agent-device back --system --platform ios                        # use edge-swipe or remote back action
+agent-device back --platform ios                                 # left-edge back swipe, verified by a screen change
 agent-device reinstall MyApp /path/to/app-debug.apk --platform android --serial emulator-5554
 agent-device open com.example.myapp --platform android --serial emulator-5554 --session my-session --relaunch
 agent-device metro reload

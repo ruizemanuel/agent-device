@@ -301,7 +301,7 @@ extension RunnerTests {
   }
 
   /// Every other XCUICoordinate gesture anchors through the same gate: a double tap, a long press
-  /// fallback, a drag, and the back and app-switcher swipes refuse on a tree that answers no window
+  /// fallback, a drag, and the app-switcher swipe refuse on a tree that answers no window
   /// instead of building a coordinate from the application XCTest cannot snapshot.
   @MainActor
   func testEveryXCTestCoordinateGestureRefusesAnUnserializableTree() throws {
@@ -318,7 +318,6 @@ extension RunnerTests {
       ("doubleTap", { _ = try self.doubleTapAt(app: self.app, x: 40, y: 40) }),
       ("longPress", { _ = try self.longPressAt(app: self.app, x: 40, y: 40, duration: 0.5) }),
       ("drag", { _ = try self.dragAt(app: self.app, x: 40, y: 40, x2: 80, y2: 80, holdDuration: 0.1) }),
-      ("back", { try self.performBackGesture(app: self.app) }),
       ("appSwitcher", { try self.performAppSwitcherGesture(app: self.app) }),
       ("touchFrame", { _ = try self.resolvedTouchVisualizationFrame(app: self.app, x: 40, y: 40) }),
     ]
